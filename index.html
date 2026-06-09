@@ -177,7 +177,7 @@
 
   // ---------- Game state ----------
   let state = "start";
-  let player, platforms, enemies, particles, walls, gems, solids, goalPlat, levelHeight, cam, level, score, lives, best;
+  let player, platforms, enemies, particles, walls, gems, shots, solids, goalPlat, levelHeight, cam, level, score, lives, best;
   let gemsTotal = 0, gemsGot = 0;
   let jumpPrev = false, bonkPrev = false;
   let idleClock = 0;
@@ -187,6 +187,7 @@
   const GRAV = 1700, MOVE = 250, JUMP_V = 760, BONK_DUR = 0.6, BONK_CD = 0.2, BONK_R = 32;
   const ROW_H = 130, FH = 16;       // corridor spacing / floor thickness
   const WALL_W = 24, WALL_H = 36;   // thick, jumpable dirt walls
+  const SHOT_SPEED = 240, SHOOT_CD = 1.3;   // red cyclops projectile
   const PIXEL = 3;                  // pixel-art downscale factor for the world (not the video)
 
   // low-res buffer for the pixel-art world (the video is drawn smooth, separately)
@@ -232,7 +233,7 @@
       if (solvableMaze(gaps, rows)) break;
     }
 
-    platforms = []; enemies = []; particles = []; walls = []; gems = [];
+    platforms = []; enemies = []; particles = []; walls = []; gems = []; shots = [];
     platforms.push({ x:0, y:levelHeight-30, w:W, h:30, floor:true });   // ground
     const gemRows = shuffle(rangeArr(1, rows-1)).slice(0, Math.min(rows-1, 3 + Math.floor(lvl*0.7)));
 
@@ -258,7 +259,7 @@
       const clearOfWalls = (x) => !rowWalls.some(w => x > w.x-18 && x < w.x+w.w+18);
       // enemies confined to a floor segment (bounce off walls, can chase)
       let eN = Math.random() < Math.min(0.92, 0.5 + lvl*0.06) ? (Math.random()<0.45 ? 2 : 1) : 0;
-      for (let k=0;k<eN;k++) { const s = segs[(Math.random()*segs.length)|0]; enemies.push(mkEnemy(y, s[0], s[1], lvl)); }
+      for (let k=0;k<eN;k++) { const s = segs[(Math.random()*segs.length)|0]; const type = Math.random() < Math.min(0.45, 0.12 + lvl*0.05) ? "shooter" : "patrol"; enemies.push(mkEnemy(y, s[0], s[1], lvl, type)); }
       // gem (required), placed on a segment but NOT inside a wall
       if (gemRows.includes(r)) {
         const s = segs[(Math.random()*segs.length)|0];
@@ -280,9 +281,9 @@
     cam = { y: levelHeight - H };
   }
 
-  function mkEnemy(floorTopY, lo, hi, lvl) {
+  function mkEnemy(floorTopY, lo, hi, lvl, type) {
     const ew=32, eh=44, ex = lo + Math.random()*Math.max(2, hi-lo-ew);   // taller, with legs
-    return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:42+lvl*6, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6 };
+    return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:42+lvl*6, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6, type: type||"patrol", shootCd: 0.8+Math.random()*0.8, aiming:false };
   }
 
   // Solvable iff every floor's gap is reachable: a floor's gap must not sit entirely above the
@@ -323,6 +324,7 @@
   const sndHurt = () => blip(110,0.35,"sawtooth",0.16);
   const sndWin = () => { blip(523,0.1,"square",0.18); blip(659,0.1,"square",0.16,0.1); blip(784,0.16,"square",0.16,0.2); };
   const sndGem = () => { blip(880,0.08,"sine",0.16); blip(1320,0.1,"sine",0.12,0.05); };
+  const sndShoot = () => { blip(320,0.08,"sawtooth",0.16); blip(160,0.12,"square",0.1,0.03); };
 
   function splat(x,y,color){ for(let i=0;i<16;i++){ const a=Math.random()*Math.PI*2,s=70+Math.random()*230; particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-80,life:.5+Math.random()*.35,color,r:2+Math.random()*4}); } }
 
@@ -399,24 +401,36 @@
       if (!e.alive) { e.dying += dt; if (e.dying >= 0.4) enemies.splice(i,1); continue; }
       e.ph += dt*6; e.jumpCd -= dt;
       const ecx0 = e.x+e.w/2, ecy0 = e.y+e.h/2;
-      // aggro: ONLY when it sees the player does it speed up, jump, and leave its platform
-      const aggro = Math.abs(pcx-ecx0) < 340 && Math.abs(pcy-ecy0) < ROW_H*1.6 && !losBlocked(ecx0, pcx, ecy0);
-      if (aggro) e.dir = pcx < ecx0 ? -1 : 1;
-      const speed = e.base * (aggro ? 2.2 : 1);
-      if (aggro) {
-        if (e.grounded && (e.jumpCd <= 0 || pcy < ecy0 - 24)) { e.vy = -560; e.grounded = false; e.jumpCd = 0.8 + Math.random()*1.2; }
-      } else if (e.grounded && !groundAhead(e)) {
-        e.dir = -e.dir;   // calm patrol: turn at platform edges instead of falling off
+      const sees = Math.abs(pcx-ecx0) < 360 && Math.abs(pcy-ecy0) < ROW_H*1.5 && !losBlocked(ecx0, pcx, ecy0);
+      e.aiming = false;
+      if (e.type === "shooter") {
+        // red cyclops: approach until horizontally aligned, then stop and fire from its eye
+        if (sees) {
+          e.dir = pcx < ecx0 ? -1 : 1;
+          if (Math.abs(pcy - ecy0) < 26) {
+            e.vx = 0; e.aiming = true;
+            e.shootCd -= dt;
+            if (e.shootCd <= 0) { shots.push({ x: ecx0 + e.dir*(e.w/2+4), y: ecy0, vx: e.dir*SHOT_SPEED, r:7 }); sndShoot(); e.shootCd = SHOOT_CD; }
+          } else { e.vx = e.dir * e.base * 1.25; }
+        } else { e.vx = 0; }
+        if (e.vx !== 0 && e.grounded && !groundAhead(e)) e.vx = 0;   // never falls off / never jumps
+      } else {
+        // green: ONLY when it sees the player does it speed up, jump, and leave its platform
+        const aggro = sees;
+        if (aggro) e.dir = pcx < ecx0 ? -1 : 1;
+        if (aggro) { if (e.grounded && (e.jumpCd <= 0 || pcy < ecy0 - 24)) { e.vy = -560; e.grounded = false; e.jumpCd = 0.8 + Math.random()*1.2; } }
+        else if (e.grounded && !groundAhead(e)) e.dir = -e.dir;   // calm patrol: turn at edges
+        e.vx = e.dir * e.base * (aggro ? 2.2 : 1);
       }
       e.vy += GRAV * dt; if (e.vy > 1400) e.vy = 1400;
-      // horizontal + solid walls (reverse on hit)
-      e.vx = e.dir * speed;
+      // horizontal + solid walls
       e.x += e.vx * dt;
       if (e.x < 2) { e.x = 2; e.dir = 1; }
       if (e.x > W-2-e.w) { e.x = W-2-e.w; e.dir = -1; }
       for (const s of solids) {
         if (e.x < s.x+s.w && e.x+e.w > s.x && e.y+3 < s.y+s.h && e.y+e.h-3 > s.y) {
-          if (e.vx > 0) { e.x = s.x - e.w; e.dir = -1; } else { e.x = s.x + s.w; e.dir = 1; }
+          if (e.vx > 0) e.x = s.x - e.w; else e.x = s.x + s.w;
+          if (e.type === "shooter") e.vx = 0; else e.dir = (e.vx > 0) ? -1 : 1;
         }
       }
       // vertical (swept) — land on floors, fall through gaps
@@ -434,6 +448,15 @@
         flash = { text: "+150", color:"#7ed957", t:0, small:true }; continue;
       }
       if (p.invuln <= 0 && p.x < e.x+e.w && p.x+p.w > e.x && p.y < e.y+e.h && p.y+p.h > e.y) hurt(ecx);
+    }
+    // projectiles (red cyclops shots): fly straight, blocked by walls/floors, hurt the player
+    for (let i=shots.length-1;i>=0;i--){
+      const s = shots[i]; s.x += s.vx * dt;
+      if (s.x < -20 || s.x > W+20) { shots.splice(i,1); continue; }
+      let blocked = false;
+      for (const so of solids) { if (s.x > so.x && s.x < so.x+so.w && s.y > so.y && s.y < so.y+so.h) { blocked = true; break; } }
+      if (blocked) { splat(s.x, s.y, "#ff5a5a"); shots.splice(i,1); continue; }
+      if (p.invuln <= 0 && s.x > p.x && s.x < p.x+p.w && s.y > p.y && s.y < p.y+p.h) { hurt(s.x); splat(s.x, s.y, "#ff5a5a"); shots.splice(i,1); }
     }
     // particles
     for (let i=particles.length-1;i>=0;i--){ const q=particles[i]; q.life-=dt; q.x+=q.vx*dt; q.y+=q.vy*dt; q.vy+=900*dt; if(q.life<=0) particles.splice(i,1); }
@@ -480,21 +503,38 @@
     const legH = 12, bodyH = e.h - legH, by = top + bob;
     const ex = e.dir || Math.sign(e.vx) || 1;
     const walk = Math.sin(e.ph) * 3;
+    const shooter = e.type === "shooter";
+    const body = shooter ? "#c0392b" : "#5aa12e", dark = shooter ? "#7d241a" : "#3c6e1f";
     // legs
-    ctx.fillStyle = "#3c6e1f";
+    ctx.fillStyle = dark;
     ctx.fillRect(cx-9+walk, by+bodyH-2, 7, legH);
     ctx.fillRect(cx+2-walk, by+bodyH-2, 7, legH);
     // body
     const cyB = by + bodyH/2;
-    ctx.fillStyle="#5aa12e"; ctx.strokeStyle="#3c6e1f"; ctx.lineWidth=2;
+    ctx.fillStyle=body; ctx.strokeStyle=dark; ctx.lineWidth=2;
     ctx.beginPath(); ctx.ellipse(cx, cyB, e.w/2, bodyH/2, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-    // ears
-    ctx.fillStyle="#5aa12e";
-    ctx.beginPath(); ctx.moveTo(cx-e.w/2, cyB-6); ctx.lineTo(cx-e.w/2-8, cyB-16); ctx.lineTo(cx-e.w/2+2, cyB-4); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx+e.w/2, cyB-6); ctx.lineTo(cx+e.w/2+8, cyB-16); ctx.lineTo(cx+e.w/2-2, cyB-4); ctx.fill();
-    // eyes (look toward movement)
-    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx+ex*4-5, cyB-3, 4,0,Math.PI*2); ctx.arc(cx+ex*4+5, cyB-3,4,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6-5, cyB-3,2,0,Math.PI*2); ctx.arc(cx+ex*6+5, cyB-3,2,0,Math.PI*2); ctx.fill();
+    if (shooter) {
+      // one central eye; glows red when aiming
+      ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx+ex*3, cyB-2, 8, 0, Math.PI*2); ctx.fill();
+      if (e.aiming) { ctx.save(); ctx.shadowColor="#ff3b3b"; ctx.shadowBlur=12; ctx.fillStyle="#ff3b3b"; ctx.beginPath(); ctx.arc(cx+ex*5, cyB-2, 4.6,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+      else { ctx.fillStyle="#b1121b"; ctx.beginPath(); ctx.arc(cx+ex*5, cyB-2, 4.6,0,Math.PI*2); ctx.fill(); }
+      ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6, cyB-2, 2,0,Math.PI*2); ctx.fill();
+    } else {
+      // ears
+      ctx.fillStyle=body;
+      ctx.beginPath(); ctx.moveTo(cx-e.w/2, cyB-6); ctx.lineTo(cx-e.w/2-8, cyB-16); ctx.lineTo(cx-e.w/2+2, cyB-4); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(cx+e.w/2, cyB-6); ctx.lineTo(cx+e.w/2+8, cyB-16); ctx.lineTo(cx+e.w/2-2, cyB-4); ctx.fill();
+      // two eyes (look toward movement)
+      ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx+ex*4-5, cyB-3, 4,0,Math.PI*2); ctx.arc(cx+ex*4+5, cyB-3,4,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6-5, cyB-3,2,0,Math.PI*2); ctx.arc(cx+ex*6+5, cyB-3,2,0,Math.PI*2); ctx.fill();
+    }
+  }
+  function drawShot(s) {
+    const y = s.y - cam.y; if (y < -20 || y > H+20) return;
+    ctx.save(); ctx.shadowColor = "#ff4040"; ctx.shadowBlur = 10;
+    const g = ctx.createRadialGradient(s.x, y, 1, s.x, y, s.r);
+    g.addColorStop(0, "#fff"); g.addColorStop(0.4, "#ff5a5a"); g.addColorStop(1, "rgba(255,40,40,0)");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI*2); ctx.fill(); ctx.restore();
   }
   function drawEnemy(e) {
     const top = e.y - cam.y; if (top > H+30 || top+e.h < -10) return;
@@ -602,6 +642,7 @@
       for (const wl of walls) drawWall(wl);
       for (const gm of gems) drawGem(gm);
       for (const e of enemies) drawEnemy(e);
+      for (const s of shots) drawShot(s);
       for (const q of particles){ ctx.globalAlpha=Math.max(0,q.life*1.6); ctx.fillStyle=q.color; ctx.fillRect(q.x-q.r, q.y-cam.y-q.r, q.r*2, q.r*2); }
       ctx.globalAlpha=1;
     }
@@ -711,6 +752,7 @@
 
   if (location.hash.startsWith("#test")) setTimeout(()=>{ startGame();
     if (location.hash==="#test-bonk") { player.bonkT = BONK_DUR*0.3; window.__FREEZE = true; }
+    else if (location.hash==="#test-shoot") { const fy=levelHeight-30; const e=mkEnemy(fy, W/2+120, W-40, level, "shooter"); e.x=W/2+170; e.dir=-1; e.aiming=true; enemies.push(e); shots.push({x:W/2+110, y:player.y+player.h/2, vx:-SHOT_SPEED, r:7}); window.__FREEZE=true; }
     if (location.hash==="#test-touch") touchEl.classList.remove("hidden");
   }, 700);
 })();
