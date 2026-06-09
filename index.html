@@ -192,7 +192,8 @@
   const GRAV = 1700, MOVE = 250, JUMP_V = 760, BONK_DUR = 0.6, BONK_CD = 0.2, BONK_R = 32;
   const ROW_H = 130, FH = 16;       // corridor spacing / floor thickness
   const WALL_W = 24, WALL_H = 36;   // thick, jumpable dirt walls
-  const SHOT_SPEED = 240, SHOOT_CD = 1.3;   // red cyclops projectile
+  const SHOT_SPEED = 250;                                  // red cyclops projectile speed
+  const shootInterval = (lvl) => Math.max(0.4, 1.25 - lvl*0.12);   // fires faster each level
   const PIXEL = 3;                  // pixel-art downscale factor for the world (not the video)
 
   // low-res buffer for the pixel-art world (the video is drawn smooth, separately)
@@ -288,7 +289,7 @@
 
   function mkEnemy(floorTopY, lo, hi, lvl, type) {
     const ew=32, eh=44, ex = lo + Math.random()*Math.max(2, hi-lo-ew);   // taller, with legs
-    return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:42+lvl*6, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6, type: type||"patrol", shootCd: 0.8+Math.random()*0.8, aiming:false };
+    return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:44+lvl*9, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6, type: type||"patrol", shootCd: 0.6+Math.random()*0.6, aiming:false };
   }
 
   // Solvable iff every floor's gap is reachable: a floor's gap must not sit entirely above the
@@ -379,10 +380,6 @@
       if (!(p.x + p.w > s.x + 2 && p.x < s.x + s.w - 2)) continue;
       if (p.vy >= 0 && prevBot <= s.y && p.y + p.h >= s.y) {            // land on top
         p.y = s.y - p.h; p.vy = 0; p.grounded = true;
-        if (s.isGoal) {
-          if (gemsGot >= gemsTotal) { sndWin(); nextLevel(); return; }
-          else flash = { text:"COLLECT ALL GEMS", color:"#ffd23f", t:0, small:true };
-        }
       } else if (p.vy < 0 && prevTop >= s.y + s.h && p.y <= s.y + s.h) { // bonk head
         p.y = s.y + s.h; p.vy = 0;
       }
@@ -397,6 +394,13 @@
       }
     }
     if (Math.abs(p.vx) > 5 && p.grounded) p.walkPh += dt * 12;
+    // reach the exit portal by TOUCHING it (needs all gems)
+    { const gp = goalPlat;
+      if (p.x < gp.x+gp.w && p.x+p.w > gp.x && p.y+p.h > gp.y-46 && p.y < gp.y+gp.h) {
+        if (gemsGot >= gemsTotal) { sndWin(); nextLevel(); return; }
+        else flash = { text:"COLLECT ALL GEMS", color:"#ffd23f", t:0, small:true };
+      }
+    }
 
     // enemies: free-roaming physics — they fall off platforms, jump, and speed up on sight
     const bp = (p.bonkT >= 0) ? bonkPoint() : null;
@@ -406,19 +410,21 @@
       if (!e.alive) { e.dying += dt; if (e.dying >= 0.4) enemies.splice(i,1); continue; }
       e.ph += dt*6; e.jumpCd -= dt;
       const ecx0 = e.x+e.w/2, ecy0 = e.y+e.h/2;
-      const sees = Math.abs(pcx-ecx0) < 360 && Math.abs(pcy-ecy0) < ROW_H*1.5 && !losBlocked(ecx0, pcx, ecy0);
+      // sees the player at any horizontal distance, as long as same corridor band and no wall blocks
+      const sees = Math.abs(pcy-ecy0) < ROW_H*1.5 && !losBlocked(ecx0, pcx, ecy0);
       e.aiming = false;
       if (e.type === "shooter") {
-        // red cyclops: approach until horizontally aligned, then stop and fire from its eye
+        // red cyclops turret: fires the instant it sees the player, aimed straight at them
         if (sees) {
-          e.dir = pcx < ecx0 ? -1 : 1;
-          if (Math.abs(pcy - ecy0) < 26) {
-            e.vx = 0; e.aiming = true;
-            e.shootCd -= dt;
-            if (e.shootCd <= 0) { shots.push({ x: ecx0 + e.dir*(e.w/2+4), y: ecy0, vx: e.dir*SHOT_SPEED, r:7 }); sndShoot(); e.shootCd = SHOOT_CD; }
-          } else { e.vx = e.dir * e.base * 1.25; }
-        } else { e.vx = 0; }
-        if (e.vx !== 0 && e.grounded && !groundAhead(e)) e.vx = 0;   // never falls off / never jumps
+          e.dir = pcx < ecx0 ? -1 : 1; e.vx = 0; e.aiming = true;
+          e.shootCd -= dt;
+          if (e.shootCd <= 0) {
+            const eyeX = ecx0 + e.dir*(e.w/2+4), eyeY = ecy0;
+            const dx = pcx - eyeX, dy = pcy - eyeY, d = Math.hypot(dx, dy) || 1;
+            shots.push({ x: eyeX, y: eyeY, vx: dx/d*SHOT_SPEED, vy: dy/d*SHOT_SPEED, r:7 });
+            sndShoot(); e.shootCd = shootInterval(level);
+          }
+        } else { e.vx = 0; e.shootCd = Math.min(e.shootCd, 0.12); }   // ready to fire on first sight
       } else {
         // green: ONLY when it sees the player does it speed up, jump, and leave its platform
         const aggro = sees;
@@ -456,8 +462,8 @@
     }
     // projectiles (red cyclops shots): fly straight, blocked by walls/floors, hurt the player
     for (let i=shots.length-1;i>=0;i--){
-      const s = shots[i]; s.x += s.vx * dt;
-      if (s.x < -20 || s.x > W+20) { shots.splice(i,1); continue; }
+      const s = shots[i]; s.x += s.vx * dt; s.y += (s.vy || 0) * dt;
+      if (s.x < -20 || s.x > W+20 || s.y < cam.y-40 || s.y > cam.y+H+40) { shots.splice(i,1); continue; }
       let blocked = false;
       for (const so of solids) { if (s.x > so.x && s.x < so.x+so.w && s.y > so.y && s.y < so.y+so.h) { blocked = true; break; } }
       if (blocked) { splat(s.x, s.y, "#ff5a5a"); shots.splice(i,1); continue; }
