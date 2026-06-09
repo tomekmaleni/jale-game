@@ -37,10 +37,10 @@
     background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.25); color:#fff; border-radius:16px;
     font-size:26px; font-weight:800; backdrop-filter: blur(2px); }
   .tbtn:active { background:rgba(126,217,87,.4); }
-  #tLeft  { left:18px;  bottom:24px;  width:74px; height:74px; }
-  #tRight { left:104px; bottom:24px;  width:74px; height:74px; }
-  #tJump  { left:61px;  bottom:108px; width:74px; height:74px; }
-  #tBonk  { right:24px; bottom:36px;  width:104px; height:104px; border-radius:50%; background:rgba(126,217,87,.22); font-size:22px; }
+  #tLeft  { left:18px;  bottom:30px;  width:80px; height:80px; }
+  #tRight { left:106px; bottom:30px;  width:80px; height:80px; }
+  #tJump  { right:140px; bottom:40px; width:92px; height:92px; border-radius:50%; }
+  #tBonk  { right:24px; bottom:40px;  width:104px; height:104px; border-radius:50%; background:rgba(126,217,87,.22); font-size:22px; }
 </style>
 </head>
 <body>
@@ -173,6 +173,11 @@
 
   function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i];a[i]=a[j];a[j]=t; } return a; }
   function rangeArr(a,b){ const r=[]; for(let i=a;i<=b;i++) r.push(i); return r; }
+  function groundAhead(e){   // is there floor just ahead under the enemy's leading foot?
+    const fx = e.dir>0 ? e.x+e.w+3 : e.x-3, fy = e.y+e.h+3;
+    for (const s of solids){ if (fx>=s.x && fx<=s.x+s.w && fy>=s.y && fy<=s.y+s.h) return true; }
+    return false;
+  }
   const PLW = 32, PLH = 46;
 
   // Closed maze: solid full-width floors every ROW_H, each with ONE staggered gap to climb
@@ -240,7 +245,7 @@
 
   function mkEnemy(floorTopY, lo, hi, lvl) {
     const ew=32, eh=44, ex = lo + Math.random()*Math.max(2, hi-lo-ew);   // taller, with legs
-    return { x:ex, y:floorTopY-eh, w:ew, h:eh, minX:lo, maxX:hi-ew, base:46+lvl*7, dir:(Math.random()<.5?-1:1), vx:0, alive:true, dying:0, ph:Math.random()*6 };
+    return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:42+lvl*6, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6 };
   }
 
   // Solvable iff every floor's gap is reachable: a floor's gap must not sit entirely above the
@@ -349,28 +354,43 @@
     }
     if (Math.abs(p.vx) > 5 && p.grounded) p.walkPh += dt * 12;
 
-    // enemies: chase when they see you, bounce off walls, never leave their floor segment
+    // enemies: free-roaming physics — they fall off platforms, jump, and speed up on sight
     const bp = (p.bonkT >= 0) ? bonkPoint() : null;
-    const pcx = p.x + p.w/2;
+    const pcx = p.x + p.w/2, pcy = p.y + p.h/2;
     for (let i = enemies.length-1; i >= 0; i--) {
       const e = enemies[i];
       if (!e.alive) { e.dying += dt; if (e.dying >= 0.4) enemies.splice(i,1); continue; }
-      e.ph += dt*5;
-      // aggro: same corridor + within sight -> charge toward the player
-      const sameRow = Math.abs((p.y+p.h) - (e.y+e.h)) < ROW_H*0.6;
-      const aggro = sameRow && Math.abs(pcx - (e.x+e.w/2)) < 300;
-      if (aggro) e.dir = pcx < e.x+e.w/2 ? -1 : 1;
-      e.vx = e.dir * e.base * (aggro ? 2.1 : 1);
+      e.ph += dt*6; e.jumpCd -= dt;
+      const ecx0 = e.x+e.w/2, ecy0 = e.y+e.h/2;
+      // aggro: ONLY when it sees the player does it speed up, jump, and leave its platform
+      const aggro = Math.abs(pcx-ecx0) < 340 && Math.abs(pcy-ecy0) < ROW_H*1.6;
+      if (aggro) e.dir = pcx < ecx0 ? -1 : 1;
+      const speed = e.base * (aggro ? 2.2 : 1);
+      if (aggro) {
+        if (e.grounded && (e.jumpCd <= 0 || pcy < ecy0 - 24)) { e.vy = -560; e.grounded = false; e.jumpCd = 0.8 + Math.random()*1.2; }
+      } else if (e.grounded && !groundAhead(e)) {
+        e.dir = -e.dir;   // calm patrol: turn at platform edges instead of falling off
+      }
+      e.vy += GRAV * dt; if (e.vy > 1400) e.vy = 1400;
+      // horizontal + solid walls (reverse on hit)
+      e.vx = e.dir * speed;
       e.x += e.vx * dt;
-      // confine to floor segment
-      if (e.x <= e.minX) { e.x = e.minX; e.dir = 1; }
-      if (e.x >= e.maxX) { e.x = e.maxX; e.dir = -1; }
-      // bounce off solid walls (don't pass through)
-      for (const wl of walls) {
-        if (e.x < wl.x+wl.w && e.x+e.w > wl.x && e.y < wl.y+wl.h && e.y+e.h > wl.y) {
-          if (e.vx > 0) { e.x = wl.x - e.w; e.dir = -1; } else { e.x = wl.x + wl.w; e.dir = 1; }
+      if (e.x < 2) { e.x = 2; e.dir = 1; }
+      if (e.x > W-2-e.w) { e.x = W-2-e.w; e.dir = -1; }
+      for (const s of solids) {
+        if (e.x < s.x+s.w && e.x+e.w > s.x && e.y+3 < s.y+s.h && e.y+e.h-3 > s.y) {
+          if (e.vx > 0) { e.x = s.x - e.w; e.dir = -1; } else { e.x = s.x + s.w; e.dir = 1; }
         }
       }
+      // vertical (swept) — land on floors, fall through gaps
+      const epT = e.y, epB = e.y+e.h; e.y += e.vy * dt; e.grounded = false;
+      for (const s of solids) {
+        if (!(e.x+e.w > s.x+2 && e.x < s.x+s.w-2)) continue;
+        if (e.vy >= 0 && epB <= s.y && e.y+e.h >= s.y) { e.y = s.y-e.h; e.vy = 0; e.grounded = true; }
+        else if (e.vy < 0 && epT >= s.y+s.h && e.y <= s.y+s.h) { e.y = s.y+s.h; e.vy = 0; }
+      }
+      if (e.y+e.h >= levelHeight) { e.y = levelHeight-e.h; e.vy = 0; e.grounded = true; }
+      // bonk kill / touch damage
       const ecx = e.x+e.w/2, ecy = e.y+e.h/2;
       if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < BONK_R + e.w/2) {
         e.alive = false; e.dying = 0; score += 150; splat(ecx, ecy, "#7ed957"); sndKill();
@@ -450,14 +470,18 @@
     }
     enemyBody(cx, top, e, Math.sin(e.ph)*2);
   }
-  function drawBody() {   // the FULL video frame, smooth, drawn on the real canvas on top
+  const VID_DY = 16;   // shift the video down: cuts some lower body, shows more above the head
+  function drawBody() {   // the video frame, smooth, drawn on the real canvas on top
     const p = player; const ys = p.y - cam.y;
     if (p.invuln > 0 && Math.floor(p.invuln*16)%2===0) return;
     const f = imgs[playerFrame()];
     if (!f || !f.complete || !f.naturalWidth) return;
-    const figH = p.h + 10, figW = figH * frameAR;        // whole frame shown, kept short
-    const cx = p.x + p.w/2, figTop = (ys + p.h) - figH;  // bottom at feet (no separate legs)
-    realCtx.save(); realCtx.imageSmoothingEnabled = true; realCtx.translate(cx, 0);
+    const feet = ys + p.h;
+    const figH = p.h + 26, figW = figH * frameAR;
+    const cx = p.x + p.w/2, figTop = feet - figH + VID_DY;   // moved down; bottom clipped at feet
+    realCtx.save();
+    realCtx.beginPath(); realCtx.rect(0, 0, W, feet); realCtx.clip();   // remove the part below the feet
+    realCtx.imageSmoothingEnabled = true; realCtx.translate(cx, 0);
     if (p.facing < 0) realCtx.scale(-1, 1);
     realCtx.drawImage(f, -figW/2, figTop, figW, figH);
     realCtx.restore();
@@ -560,6 +584,7 @@
 
   if (location.hash.startsWith("#test")) setTimeout(()=>{ startGame();
     if (location.hash==="#test-bonk") { player.bonkT = BONK_DUR*0.92; window.__FREEZE = true; }
+    if (location.hash==="#test-touch") touchEl.classList.remove("hidden");
   }, 700);
 })();
 </script>
