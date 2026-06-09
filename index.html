@@ -477,7 +477,7 @@
     const f = imgs[playerFrame()];
     if (!f || !f.complete || !f.naturalWidth) return;
     const feet = ys + p.h;
-    const figH = p.h + 26, figW = figH * frameAR;
+    const figH = p.h + 58, figW = figH * frameAR;            // taller -> more video shows above his head
     const cx = p.x + p.w/2, figTop = feet - figH + VID_DY;   // moved down; bottom clipped at feet
     realCtx.save();
     realCtx.beginPath(); realCtx.rect(0, 0, W, feet); realCtx.clip();   // remove the part below the feet
