@@ -84,8 +84,9 @@
   window.addEventListener("resize", resize);
   resize();
 
-  // ---------- Frames (neutral -> grin/tilt) ----------
-  const N = 21;
+  // ---------- Frames ----------
+  // 1..21  = the loop (neutral -> grin), 22..32 = the tilt payoff (plays after a click)
+  const N = 32, LOOP_LAST = 20, TILT_LAST = N - 1;
   const frames = [];
   for (let i = 1; i <= N; i++) { const im = new Image(); im.src = "img/jale_" + String(i).padStart(2, "0") + ".jpg"; frames.push(im); }
 
@@ -115,7 +116,7 @@
   let phase = "live";               // live (looping) | result (frozen flash)
   let clock, oscStart, period;      // animation clock, current cycle start, cycle length
   let score, lives, combo, attempts, best;
-  let result;                       // { lockProgress, t, over }
+  let result;                       // { tiltFrom, t, over }
   let flash;                        // { name, color, pts, t }
   best = Number(localStorage.getItem("jaleBonkBest") || 0);
 
@@ -127,7 +128,8 @@
     const w = (2 * Math.PI * (clock - oscStart)) / period;
     return (1 - Math.cos(w)) / 2;
   }
-  const frameIndex = (p) => Math.max(0, Math.min(N - 1, Math.round(p * (N - 1))));
+  const loopFrame = (p) => Math.max(0, Math.min(LOOP_LAST, Math.round(p * LOOP_LAST)));
+  const TILT_DUR = 0.7;   // seconds for the post-click tilt to play out (slow enough to read)
 
   function reset() {
     score = 0; lives = 3; combo = 0; attempts = 0;
@@ -143,7 +145,7 @@
     const tier = judge(err);
     if (tier.pts > 0) { combo++; const gain = tier.pts + (combo >= 3 ? (combo - 2) * 25 : 0); score += gain; flash = { name: tier.name, color: tier.color, pts: gain, t: 0 }; sndHit(tier); }
     else { combo = 0; lives--; flash = { name: tier.name, color: tier.color, pts: 0, t: 0 }; sndMiss(); }
-    result = { lockProgress: p, t: 0, over: lives <= 0 };
+    result = { tiltFrom: loopFrame(p), t: 0, over: lives <= 0 };   // tilt starts from where the grin was
     phase = "result";
   }
   canvas.addEventListener("mousedown", (e) => { e.preventDefault(); tap(); });
@@ -173,7 +175,7 @@
     clock += dt;
     if (phase === "result") {
       result.t += dt; if (flash) flash.t += dt;
-      if (result.t >= 0.85) {
+      if (result.t >= 1.0) {
         if (result.over) { gameOver(); return; }
         attempts++; period = periodFor(attempts);   // speed up
         oscStart = clock;                            // restart the loop from neutral
@@ -189,8 +191,14 @@
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   }
   function drawJale() {
-    const p = (phase === "result") ? result.lockProgress : (state === "playing" ? oscProgress() : 0);
-    const f = frames[frameIndex(p)];
+    let idx;
+    if (phase === "result") {
+      const k = Math.min(1, result.t / TILT_DUR);          // play the tilt: grin -> head-down
+      idx = Math.round(result.tiltFrom + (TILT_LAST - result.tiltFrom) * k);
+    } else {
+      idx = (state === "playing") ? loopFrame(oscProgress()) : 0;
+    }
+    const f = frames[idx];
     if (f && f.complete && f.naturalWidth) ctx.drawImage(f, JX, JY, JW, JH);
     const g = ctx.createLinearGradient(0, 0, W, 0);
     g.addColorStop(0, "rgba(5,7,13,0.9)"); g.addColorStop(0.18, "rgba(5,7,13,0)");
