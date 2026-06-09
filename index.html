@@ -415,10 +415,15 @@
   function frame(ts) {
     const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0;
     last = ts;
-    if (state === "playing") update(dt);
-    render();
+    try {
+      if (state === "playing") update(dt);
+      render();
+    } catch (e) {
+      console.error(e);   // never let one bad frame kill the loop
+    }
     requestAnimationFrame(frame);
   }
+  reset();                // initialise state arrays so render() is safe before PLAY
   requestAnimationFrame(frame);
 
   // ---------- Screens ----------
