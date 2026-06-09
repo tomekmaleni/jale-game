@@ -65,7 +65,7 @@
     <div class="sub" id="ctrlHint"></div>
     <button class="btn" id="startBtn">PLAY</button>
     <button class="btn ghost" id="settingsBtn">Controls</button>
-    <button class="btn ghost" id="editBtn">Cut / outline editor</button>
+    <button class="btn ghost" id="editBtn" style="display:none">Cut / outline editor</button>
     <div class="credit">made with the footage from that night</div>
   </div>
 
@@ -170,6 +170,11 @@
   }
   window.addEventListener("keydown", (e) => {
     if (rebinding) { keymap[rebinding] = e.code; rebinding = null; saveKeys(); renderBinds(); e.preventDefault(); return; }
+    // Space / Enter starts or replays the game (when not already playing and editor is closed)
+    if (!e.repeat && (e.code === "Space" || e.code === "Enter") && (state === "start" || state === "over")) {
+      const ed = document.getElementById("editor");
+      if (!ed || ed.classList.contains("hidden")) { audio(); startGame(); e.preventDefault(); return; }
+    }
     pressed.add(e.code);
     if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","ControlRight"].includes(e.code)) e.preventDefault();
   });
