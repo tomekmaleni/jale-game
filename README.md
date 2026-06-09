@@ -1,41 +1,38 @@
 # Jale Bonk
 
-A tiny browser game built from a night-time clip of Jale. Move his head up and
-down to line up with the incoming balls, **hold** to charge his smile, then
-**release** to tilt his head and bonk them with his nose. A bigger smile reaches
-further. Miss three and it's over.
+A tiny browser timing game built from a night-time clip of Jale. His head loops
+from neutral into a big grin and back, over and over. Click at the exact moment
+his grin is fullest — the closer you nail the peak, the flashier the rank
+(GOOD → GREAT → EPIC → LEGENDARY) and the bigger the score. Miss it badly and you
+lose a life. It keeps getting faster.
 
 ## Play
 
-Open `index.html` in a browser, or play the hosted version on GitHub Pages.
+Open `index.html` in a browser, or play the hosted version on GitHub Pages:
+https://tomekmaleni.github.io/jale-game/
 
-- **Mouse:** move to aim, hold left button to charge, release to tilt
-- **Touch:** drag to aim, hold to charge, release to tilt
-- **Keyboard:** Up/Down to aim, hold Space to charge, release to tilt
+- **Mouse / touch:** click or tap at the peak of the grin
+- **Keyboard:** Space (or Enter) at the peak
 
 ## How it's made
 
-The character and background are real frames pulled from
+The animation frames are pulled straight from
 `assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4`:
 
-- `img/head_01.jpg … head_18.jpg` — Jale's head across the smile-and-tilt motion,
-  cropped, brightened, and feathered at runtime so it blends into the scene.
-- `img/bg.jpg` — a darkened, blurred frame used as the backdrop.
+- `img/jale_01.jpg … jale_21.jpg` — Jale going from a neutral pose into a grin
+  (the clip from ~t=4s to ~t=8.8s), brightened and centered.
 
-Everything else is a single self-contained `index.html` (HTML canvas + vanilla JS,
-no dependencies, no build step).
+The game eases a sine "ping-pong" through those frames so the grin builds and
+relaxes; your click is scored on how close the grin was to its fullest frame.
+Everything is a single self-contained `index.html` (HTML canvas + vanilla JS,
+no dependencies, no build step). Sounds are synthesized with the Web Audio API.
 
 ### Re-extracting frames
 
 With `ffmpeg` installed:
 
 ```bash
-# head sprite sequence (18 frames)
-ffmpeg -i "assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4" \
-  -vf "fps=1.74,crop=360:360:90:330,eq=brightness=0.20:contrast=1.32:saturation=1.1,scale=320:320" \
-  -frames:v 18 img/head_%02d.jpg
-
-# background
-ffmpeg -ss 0.5 -i "assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4" -vframes 1 \
-  -vf "eq=brightness=0.06:contrast=1.1,gblur=sigma=8,eq=brightness=-0.12,scale=540:-1" img/bg.jpg
+ffmpeg -ss 4.0 -i "assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4" -t 4.8 \
+  -vf "fps=4.4,eq=brightness=0.20:contrast=1.32:saturation=1.1,scale=432:-1" \
+  img/jale_%02d.jpg
 ```

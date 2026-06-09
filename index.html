@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>Jale Bonk</title>
 <style>
-  :root { --teal:#00A8CC; --blue:#0076BE; --navy:#003865; }
+  :root { --teal:#00A8CC; --blue:#0076BE; --navy:#003865; --gold:#ffd23f; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; background: #05070d; overflow: hidden; }
   body {
@@ -14,14 +14,14 @@
     color: #eef3f8; touch-action: none;
   }
   #wrap { position: relative; width: 100vw; height: 100vh; }
-  canvas { display: block; width: 100%; height: 100%; image-rendering: auto; }
+  canvas { display: block; width: 100%; height: 100%; }
 
   .overlay {
-    position: absolute; inset: 0; display: flex; flex-direction: column;
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; flex-direction: column;
     align-items: center; justify-content: center; text-align: center;
     gap: 18px; padding: 24px;
-    background: radial-gradient(ellipse at center, rgba(0,56,101,.55), rgba(5,7,13,.92));
-    backdrop-filter: blur(2px);
+    background: radial-gradient(ellipse at center, rgba(0,56,101,.55), rgba(5,7,13,.93));
   }
   .overlay.hidden { display: none; }
   .title {
@@ -29,7 +29,7 @@
     color: #fff; text-shadow: 0 0 24px var(--teal), 0 4px 0 var(--navy);
   }
   .title span { color: var(--teal); }
-  .sub { font-size: clamp(15px, 3.6vw, 20px); max-width: 540px; line-height: 1.5; opacity: .92; }
+  .sub { font-size: clamp(15px, 3.6vw, 20px); max-width: 560px; line-height: 1.5; opacity: .92; }
   .sub b { color: var(--teal); }
   .btn {
     margin-top: 8px; padding: 14px 38px; font-size: 20px; font-weight: 700;
@@ -50,10 +50,10 @@
   <div id="startScreen" class="overlay">
     <div class="title">JALE <span>BONK</span></div>
     <div class="sub">
-      Move <b>Jale's head</b> up and down to line up with the incoming balls.
-      <b>Hold</b> to charge his smile, then <b>release</b> to tilt and bonk
-      them with his nose. A bigger smile reaches further.<br />
-      Don't let them slip past him. 3 misses and it's over.
+      Jale's head <b>loops</b> from neutral into a big grin and back, over and over.
+      <b>Click / tap / press Space</b> at the exact moment his grin is <b>fullest</b>.
+      The closer you nail the peak, the flashier the rank and the bigger the score.
+      Miss it badly and you lose a life — and it keeps getting faster.
     </div>
     <button class="btn" id="startBtn">PLAY</button>
     <div class="credit">made with the footage from that night</div>
@@ -71,11 +71,10 @@
 (() => {
   "use strict";
 
-  // ---------- Logical resolution (internal coords, scaled to viewport) ----------
+  // ---------- Logical resolution ----------
   const W = 960, H = 600;
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
-
   function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(W * dpr);
@@ -85,345 +84,173 @@
   window.addEventListener("resize", resize);
   resize();
 
-  // ---------- Assets ----------
-  const FRAME_COUNT = 18;
+  // ---------- Frames (neutral -> grin/tilt) ----------
+  const N = 21;
   const frames = [];
-  let assetsLoaded = 0, totalAssets = FRAME_COUNT + 1;
-  for (let i = 1; i <= FRAME_COUNT; i++) {
-    const img = new Image();
-    img.src = "img/head_" + String(i).padStart(2, "0") + ".jpg";
-    img.onload = () => assetsLoaded++;
-    frames.push(img);
+  for (let i = 1; i <= N; i++) { const im = new Image(); im.src = "img/jale_" + String(i).padStart(2, "0") + ".jpg"; frames.push(im); }
+
+  // ---------- Layout: Jale centered, fit to height ----------
+  let JX, JY, JW, JH;
+  function layout() {
+    const f = frames[0];
+    const nw = f.naturalWidth || 432, nh = f.naturalHeight || 768;
+    JH = H; JW = nw * (JH / nh); JY = 0; JX = (W - JW) / 2;
   }
-  const bgImg = new Image();
-  bgImg.src = "img/bg.jpg";
-  bgImg.onload = () => assetsLoaded++;
+  frames[0].onload = layout;
+  layout();
 
-  // Offscreen canvas used to feather the rectangular head frames into the scene.
-  const headCanvas = document.createElement("canvas");
-  headCanvas.width = headCanvas.height = 320;
-  const hctx = headCanvas.getContext("2d");
-  // Radial feather mask (drawn once, reused via destination-in).
-  const maskCanvas = document.createElement("canvas");
-  maskCanvas.width = maskCanvas.height = 320;
-  (() => {
-    const mc = maskCanvas.getContext("2d");
-    const g = mc.createRadialGradient(160, 168, 40, 160, 168, 175);
-    g.addColorStop(0, "rgba(0,0,0,1)");
-    g.addColorStop(0.62, "rgba(0,0,0,1)");
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    mc.fillStyle = g;
-    mc.beginPath();
-    mc.ellipse(160, 160, 168, 175, 0, 0, Math.PI * 2);
-    mc.fill();
-  })();
+  // ---------- Scoring tiers ----------
+  // err = how far the grin was from its fullest (0 = perfect peak).
+  const TIERS = [
+    { max: 0.030, name: "LEGENDARY", pts: 500, color: "#ffd23f" },
+    { max: 0.070, name: "EPIC",      pts: 300, color: "#b06bff" },
+    { max: 0.130, name: "GREAT",     pts: 150, color: "#00A8CC" },
+    { max: 0.200, name: "GOOD",      pts: 50,  color: "#5BC2E7" },
+  ];
+  const MISS = { name: "MISS", pts: 0, color: "#ff5d73" };
+  function judge(err) { for (const t of TIERS) if (err <= t.max) return t; return MISS; }
 
-  // ---------- Geometry of Jale's head in the scene ----------
-  const HEAD_SIZE = 300;           // drawn size of the head sprite
-  const HEAD_CX = 175;             // horizontal center of the head
-  // Nose reference point as a fraction of the sprite box (profile faces right).
-  const NOSE_FX = 0.60, NOSE_FY = 0.44;
-  const REACH = 80;                // base nose reach on a tilt (no charge)
-  const REACH_BONUS = 70;          // extra reach at full charge
-  const HIT_TOL = 46;              // base vertical hit tolerance
-  const HIT_TOL_BONUS = 26;        // extra tolerance at full charge
-
-  // Hold-to-charge (smile) then release (tilt):
-  const CHARGE_FULL = 0.55;        // seconds of holding to reach a full smile
-  const CHARGE_FRAME_MAX = 9;      // frame index reached by a full smile windup
-  const LUNGE_DUR = 0.34;          // seconds for the tilt (lunge + return)
-
-  // ---------- Game state ----------
-  let state = "start";             // start | playing | over
-  let headY, targetHeadY;          // current & desired head center Y
-  let balls, particles, score, combo, lives, spawnTimer, elapsed, best;
-  let charging, chargeT;           // is the player holding? how long?
-  let lunge;                       // { t, power, fromFrame, hit } or null
-
+  // ---------- State ----------
+  let state = "start";              // start | playing | over
+  let phase = "live";               // live (looping) | result (frozen flash)
+  let clock, oscStart, period;      // animation clock, current cycle start, cycle length
+  let score, lives, combo, attempts, best;
+  let result;                       // { lockProgress, t, over }
+  let flash;                        // { name, color, pts, t }
   best = Number(localStorage.getItem("jaleBonkBest") || 0);
 
+  const BASE_PERIOD = 1.9;          // s for a full neutral->grin->neutral loop
+  const periodFor = (a) => Math.max(0.7, BASE_PERIOD - a * 0.06);
+
+  // progress 0..1 across the tilt; sine ping-pong so it eases at the peak
+  function oscProgress() {
+    const w = (2 * Math.PI * (clock - oscStart)) / period;
+    return (1 - Math.cos(w)) / 2;
+  }
+  const frameIndex = (p) => Math.max(0, Math.min(N - 1, Math.round(p * (N - 1))));
+
   function reset() {
-    headY = targetHeadY = H * 0.55;
-    balls = [];
-    particles = [];
-    score = 0; combo = 0; lives = 3;
-    spawnTimer = 0.6;
-    elapsed = 0;
-    charging = false; chargeT = 0; lunge = null;
+    score = 0; lives = 3; combo = 0; attempts = 0;
+    clock = 0; oscStart = 0; period = periodFor(0);
+    phase = "live"; result = null; flash = null;
   }
 
-  const charge01 = () => Math.min(chargeT / CHARGE_FULL, 1);
-  const chargeFrame = () => Math.round(charge01() * CHARGE_FRAME_MAX);
+  // ---------- Input (single click — catch the peak) ----------
+  function tap() {
+    if (state !== "playing" || phase !== "live") return;
+    const p = oscProgress();
+    const err = 1 - p;                       // distance from the fullest grin
+    const tier = judge(err);
+    if (tier.pts > 0) { combo++; const gain = tier.pts + (combo >= 3 ? (combo - 2) * 25 : 0); score += gain; flash = { name: tier.name, color: tier.color, pts: gain, t: 0 }; sndHit(tier); }
+    else { combo = 0; lives--; flash = { name: tier.name, color: tier.color, pts: 0, t: 0 }; sndMiss(); }
+    result = { lockProgress: p, t: 0, over: lives <= 0 };
+    phase = "result";
+  }
+  canvas.addEventListener("mousedown", (e) => { e.preventDefault(); tap(); });
+  canvas.addEventListener("touchstart", (e) => { tap(); e.preventDefault(); }, { passive: false });
+  window.addEventListener("keydown", (e) => { if (e.code === "Space" || e.code === "Enter") { if (!e.repeat) tap(); e.preventDefault(); } });
 
-  // ---------- Input ----------
-  function viewToLogicalY(clientY) {
-    const r = canvas.getBoundingClientRect();
-    return ((clientY - r.top) / r.height) * H;
-  }
-  function moveHeadTo(clientY) {
-    targetHeadY = Math.max(HEAD_SIZE * 0.28, Math.min(H - HEAD_SIZE * 0.18, viewToLogicalY(clientY)));
-  }
-  function startCharge() {
-    if (state !== "playing") return;
-    if (charging || lunge) return;     // already charging or mid-tilt
-    charging = true; chargeT = 0;
-  }
-  function releaseCharge() {
-    if (!charging) return;
-    const power = charge01();
-    lunge = { t: 0, power, fromFrame: chargeFrame(), hit: false };
-    charging = false; chargeT = 0;
-    sndCharge();
-  }
-
-  canvas.addEventListener("mousemove", (e) => moveHeadTo(e.clientY));
-  canvas.addEventListener("mousedown", (e) => { e.preventDefault(); startCharge(); });
-  window.addEventListener("mouseup", (e) => { releaseCharge(); });
-  canvas.addEventListener("touchmove", (e) => { if (e.touches[0]) moveHeadTo(e.touches[0].clientY); e.preventDefault(); }, { passive: false });
-  canvas.addEventListener("touchstart", (e) => { if (e.touches[0]) moveHeadTo(e.touches[0].clientY); startCharge(); e.preventDefault(); }, { passive: false });
-  canvas.addEventListener("touchend", (e) => { releaseCharge(); e.preventDefault(); }, { passive: false });
-  canvas.addEventListener("touchcancel", () => releaseCharge());
-  window.addEventListener("keydown", (e) => {
-    if (e.code === "Space" || e.code === "Enter") { if (!e.repeat) startCharge(); e.preventDefault(); }
-    if (e.code === "ArrowUp") { targetHeadY = Math.max(HEAD_SIZE * 0.28, targetHeadY - 38); }
-    if (e.code === "ArrowDown") { targetHeadY = Math.min(H - HEAD_SIZE * 0.18, targetHeadY + 38); }
-  });
-  window.addEventListener("keyup", (e) => {
-    if (e.code === "Space" || e.code === "Enter") releaseCharge();
-  });
-
-  // ---------- Audio (tiny WebAudio blips, no asset needed) ----------
+  // ---------- Audio ----------
   let actx = null;
   function audio() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return actx; }
-  function blip(freq, dur, type, vol) {
+  function blip(freq, dur, type, vol, when) {
     const a = audio(); if (!a) return;
-    const o = a.createOscillator(), g = a.createGain();
-    o.type = type || "sine"; o.frequency.value = freq;
-    g.gain.value = vol || 0.18;
-    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
-    o.connect(g); g.connect(a.destination);
-    o.start(); o.stop(a.currentTime + dur);
+    const o = a.createOscillator(), g = a.createGain(); const t0 = a.currentTime + (when || 0);
+    o.type = type || "sine"; o.frequency.value = freq; g.gain.value = vol || 0.18;
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g); g.connect(a.destination); o.start(t0); o.stop(t0 + dur);
   }
-  const sndHit = () => { blip(180, 0.12, "square", 0.25); blip(90, 0.18, "triangle", 0.18); };
-  const sndMiss = () => blip(120, 0.3, "sawtooth", 0.12);
-  const sndCharge = () => blip(300, 0.08, "sine", 0.14);
-
-  // ---------- Spawning ----------
-  const BALL_COLORS = ["#00A8CC", "#5BC2E7", "#0076BE", "#ffd23f", "#ff5d73"];
-  function spawnBall() {
-    const r = 22 + Math.random() * 12;
-    const speed = 150 + elapsed * 9 + Math.random() * 60;   // px/s, ramps up
-    balls.push({
-      x: W + r,
-      y: HEAD_SIZE * 0.30 + Math.random() * (H - HEAD_SIZE * 0.5),
-      r,
-      vx: -speed,
-      color: BALL_COLORS[(Math.random() * BALL_COLORS.length) | 0],
-      spin: Math.random() * Math.PI,
-    });
-  }
-
-  function nosePoint(extra) {
-    // current nose world position, extended forward by `extra`
-    return {
-      x: HEAD_CX + (NOSE_FX - 0.5) * HEAD_SIZE + (extra || 0),
-      y: headY + (NOSE_FY - 0.5) * HEAD_SIZE + headDip(),
-    };
-  }
-  function headDip() {
-    // head dips downward as it tilts forward (peaks mid-lunge)
-    if (!lunge) return 0;
-    const p = Math.sin(Math.min(lunge.t / LUNGE_DUR, 1) * Math.PI);
-    return p * (24 + lunge.power * 14);
-  }
-
-  function popParticles(x, y, color) {
-    for (let i = 0; i < 14; i++) {
-      const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 220;
-      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.5 + Math.random() * 0.3, color, r: 2 + Math.random() * 4 });
-    }
+  const sndMiss = () => blip(110, 0.35, "sawtooth", 0.14);
+  function sndHit(tier) {
+    const base = tier.pts >= 500 ? 523 : tier.pts >= 300 ? 440 : tier.pts >= 150 ? 392 : 330;
+    blip(base, 0.12, "square", 0.2);
+    if (tier.pts >= 150) blip(base * 1.5, 0.14, "square", 0.16, 0.06);
+    if (tier.pts >= 300) blip(base * 2, 0.16, "square", 0.14, 0.12);
   }
 
   // ---------- Update ----------
   function update(dt) {
-    elapsed += dt;
-    headY += (targetHeadY - headY) * Math.min(1, dt * 14);   // smooth follow
-
-    // hold to charge the smile
-    if (charging) chargeT += dt;
-
-    // release -> tilt: lunge forward, hit check across the whole forward stroke
-    if (lunge) {
-      lunge.t += dt;
-      const p = Math.min(lunge.t / LUNGE_DUR, 1);
-      const reachNow = (REACH + REACH_BONUS * lunge.power) * Math.sin(p * Math.PI);
-      const tol = HIT_TOL + HIT_TOL_BONUS * lunge.power;
-      if (!lunge.hit && p <= 0.6) {       // hit window is the forward stroke
-        const nose = nosePoint(reachNow);
-        for (let i = balls.length - 1; i >= 0; i--) {
-          const b = balls[i];
-          if (b.x <= nose.x + b.r && b.x >= HEAD_CX && Math.abs(b.y - nose.y) <= tol + b.r) {
-            balls.splice(i, 1);
-            combo++;
-            score += 1 + Math.floor(combo / 5);
-            popParticles(b.x, b.y, b.color);
-            sndHit();
-            lunge.hit = true;
-            break;
-          }
-        }
+    clock += dt;
+    if (phase === "result") {
+      result.t += dt; if (flash) flash.t += dt;
+      if (result.t >= 0.85) {
+        if (result.over) { gameOver(); return; }
+        attempts++; period = periodFor(attempts);   // speed up
+        oscStart = clock;                            // restart the loop from neutral
+        phase = "live";
       }
-      if (lunge.t >= LUNGE_DUR) lunge = null;
-    }
-
-    // spawn
-    spawnTimer -= dt;
-    if (spawnTimer <= 0) {
-      spawnBall();
-      const rate = Math.max(0.45, 1.25 - elapsed * 0.018);   // faster over time
-      spawnTimer = rate * (0.7 + Math.random() * 0.6);
-    }
-
-    // balls
-    for (let i = balls.length - 1; i >= 0; i--) {
-      const b = balls[i];
-      b.x += b.vx * dt;
-      b.spin += dt * 4;
-      if (b.x + b.r < HEAD_CX - 10) {     // slipped past Jale
-        balls.splice(i, 1);
-        lives--; combo = 0; sndMiss();
-        if (lives <= 0) gameOver();
-      }
-    }
-
-    // particles
-    for (let i = particles.length - 1; i >= 0; i--) {
-      const p = particles[i];
-      p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 400 * dt;
-      if (p.life <= 0) particles.splice(i, 1);
     }
   }
 
   // ---------- Render ----------
-  function drawBackground() {
-    if (bgImg.complete && bgImg.naturalWidth) {
-      // cover-fit the portrait bg across the landscape canvas
-      const s = Math.max(W / bgImg.naturalWidth, H / bgImg.naturalHeight);
-      const dw = bgImg.naturalWidth * s, dh = bgImg.naturalHeight * s;
-      ctx.drawImage(bgImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
-    } else {
-      ctx.fillStyle = "#0a1020"; ctx.fillRect(0, 0, W, H);
-    }
-    ctx.fillStyle = "rgba(5,7,13,0.45)";
-    ctx.fillRect(0, 0, W, H);
+  function drawBg() {
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, "#0a1426"); bg.addColorStop(0.6, "#070a14"); bg.addColorStop(1, "#05070d");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
   }
-
-  const LAST = FRAME_COUNT - 1;
-  function currentFrameIndex() {
-    if (lunge) {
-      // forward stroke: charge-frame -> full tilt; return stroke: full tilt -> idle
-      const p = Math.min(lunge.t / LUNGE_DUR, 1);
-      if (p <= 0.55) {
-        const k = p / 0.55;
-        return Math.round(lunge.fromFrame + (LAST - lunge.fromFrame) * k);
-      }
-      const k = (p - 0.55) / 0.45;
-      return Math.round(LAST * (1 - k));
-    }
-    if (charging) return chargeFrame();   // smiling windup
-    return 0;                             // idle: head up
-  }
-
-  function drawHead() {
-    const img = frames[currentFrameIndex()];
-    if (!img || !img.complete) return;
-    hctx.clearRect(0, 0, 320, 320);
-    hctx.globalCompositeOperation = "source-over";
-    hctx.drawImage(img, 0, 0, 320, 320);
-    hctx.globalCompositeOperation = "destination-in";
-    hctx.drawImage(maskCanvas, 0, 0);
-    hctx.globalCompositeOperation = "source-over";
-
-    const x = HEAD_CX - HEAD_SIZE / 2;
-    const y = headY - HEAD_SIZE / 2 + headDip();
-    ctx.drawImage(headCanvas, x, y, HEAD_SIZE, HEAD_SIZE);
-  }
-
-  // Charge ring at the nose while holding, so timing is readable.
-  function drawCharge() {
-    if (!charging) return;
-    const c = charge01();
-    const nose = nosePoint(8);
-    ctx.save();
-    ctx.lineWidth = 5; ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(255,255,255,0.25)";
-    ctx.beginPath(); ctx.arc(nose.x, nose.y, 26, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = c >= 1 ? "#ffd23f" : "#00A8CC";
-    ctx.shadowColor = ctx.strokeStyle; ctx.shadowBlur = 12;
-    ctx.beginPath(); ctx.arc(nose.x, nose.y, 26, -Math.PI / 2, -Math.PI / 2 + c * Math.PI * 2); ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawBall(b) {
-    const g = ctx.createRadialGradient(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.1, b.x, b.y, b.r);
-    g.addColorStop(0, "#ffffff");
-    g.addColorStop(0.25, b.color);
-    g.addColorStop(1, "rgba(0,0,0,0.35)");
-    ctx.save();
-    ctx.shadowColor = b.color; ctx.shadowBlur = 18;
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+  function drawJale() {
+    const p = (phase === "result") ? result.lockProgress : (state === "playing" ? oscProgress() : 0);
+    const f = frames[frameIndex(p)];
+    if (f && f.complete && f.naturalWidth) ctx.drawImage(f, JX, JY, JW, JH);
+    const g = ctx.createLinearGradient(0, 0, W, 0);
+    g.addColorStop(0, "rgba(5,7,13,0.9)"); g.addColorStop(0.18, "rgba(5,7,13,0)");
+    g.addColorStop(0.82, "rgba(5,7,13,0)"); g.addColorStop(1, "rgba(5,7,13,0.9)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
 
   function drawHUD() {
-    ctx.fillStyle = "#fff";
-    ctx.font = "700 34px 'Trebuchet MS', sans-serif";
+    ctx.fillStyle = "#fff"; ctx.font = "700 34px 'Trebuchet MS', sans-serif";
     ctx.textAlign = "left"; ctx.textBaseline = "top";
-    ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 6;
-    ctx.fillText(String(score), 24, 18);
-    ctx.shadowBlur = 0;
-    if (combo >= 5) {
-      ctx.fillStyle = "#00A8CC";
-      ctx.font = "700 18px 'Trebuchet MS', sans-serif";
-      ctx.fillText("combo x" + (1 + Math.floor(combo / 5)), 26, 58);
-    }
-    // lives (hearts) top-right
-    ctx.textAlign = "right";
-    ctx.font = "26px sans-serif";
-    let s = "";
-    for (let i = 0; i < 3; i++) s += i < lives ? "❤ " : "🖤 ";
+    ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 6; ctx.fillText(String(score), 24, 18); ctx.shadowBlur = 0;
+    if (combo >= 3) { ctx.fillStyle = "#ffd23f"; ctx.font = "700 18px 'Trebuchet MS',sans-serif"; ctx.fillText(combo + " streak", 26, 58); }
+    ctx.textAlign = "right"; ctx.font = "26px sans-serif";
+    let s = ""; for (let i = 0; i < 3; i++) s += i < lives ? "❤ " : "🖤 ";
     ctx.fillText(s.trim(), W - 20, 20);
+    if (phase === "live") {
+      ctx.textAlign = "center"; ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 16px 'Trebuchet MS',sans-serif";
+      ctx.fillText("click at the peak of the grin", W / 2, H - 34);
+    }
+  }
+
+  function drawFlash() {
+    if (!flash) return;
+    const t = flash.t, dur = 0.85;
+    if (t > dur) return;
+    const k = Math.min(1, t / 0.18);
+    const fade = t > 0.55 ? 1 - (t - 0.55) / 0.3 : 1;
+    const scale = 0.6 + 0.4 * (k < 1 ? easeOutBack(k) : 1);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, fade);
+    ctx.translate(W / 2, H * 0.4);
+    ctx.scale(scale, scale);
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = flash.color; ctx.shadowColor = flash.color; ctx.shadowBlur = 30;
+    ctx.font = "800 64px 'Trebuchet MS', sans-serif";
+    ctx.fillText(flash.name, 0, 0);
+    ctx.shadowBlur = 0;
+    if (flash.pts > 0) { ctx.fillStyle = "#fff"; ctx.font = "700 28px 'Trebuchet MS', sans-serif"; ctx.fillText("+" + flash.pts, 0, 52); }
+    else { ctx.fillStyle = "#fff"; ctx.font = "700 22px 'Trebuchet MS', sans-serif"; ctx.fillText("clicked too early", 0, 48); }
+    ctx.restore();
   }
 
   function render() {
-    drawBackground();
-    for (const b of balls) drawBall(b);
-    drawHead();
-    drawCharge();
-    for (const p of particles) {
-      ctx.globalAlpha = Math.max(0, p.life * 1.6);
-      ctx.fillStyle = p.color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    if (state === "playing") drawHUD();
+    drawBg();
+    drawJale();
+    if (state === "playing") { drawHUD(); drawFlash(); }
   }
+
+  // ---------- helpers ----------
+  function easeOutBack(x) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
 
   // ---------- Loop ----------
   let last = 0;
   function frame(ts) {
     const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0;
     last = ts;
-    try {
-      if (state === "playing") update(dt);
-      render();
-    } catch (e) {
-      console.error(e);   // never let one bad frame kill the loop
-    }
+    try { if (state === "playing") update(dt); render(); } catch (e) { console.error(e); }
     requestAnimationFrame(frame);
   }
-  reset();                // initialise state arrays so render() is safe before PLAY
+  reset();
   requestAnimationFrame(frame);
 
   // ---------- Screens ----------
@@ -431,25 +258,14 @@
   const overScreen = document.getElementById("overScreen");
   const finalScore = document.getElementById("finalScore");
   const bestLine = document.getElementById("bestLine");
-
-  function startGame() {
-    reset();
-    state = "playing";
-    startScreen.classList.add("hidden");
-    overScreen.classList.add("hidden");
-    audio(); // unlock on user gesture
-  }
+  function startGame() { reset(); state = "playing"; startScreen.classList.add("hidden"); overScreen.classList.add("hidden"); audio(); }
   function gameOver() {
     state = "over";
     if (score > best) { best = score; localStorage.setItem("jaleBonkBest", String(best)); }
-    finalScore.textContent = score;
-    bestLine.textContent = "Best: " + best;
-    overScreen.classList.remove("hidden");
+    finalScore.textContent = score; bestLine.textContent = "Best: " + best; overScreen.classList.remove("hidden");
   }
-
   document.getElementById("startBtn").addEventListener("click", startGame);
   document.getElementById("againBtn").addEventListener("click", startGame);
-
   bestLine.textContent = "Best: " + best;
 })();
 </script>
