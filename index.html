@@ -99,22 +99,22 @@
 
   // ---------- Goblin = full footage (head+body) + drawn legs, pixel-art ----------
   // frames 0..15 = neutral -> smile (idle loop); 15..31 = smile -> tilt (attack)
-  const FRAMES = 32, SMILE = 15;
+  const FRAMES = 29;
   const imgs = [];
   for (let i = 0; i < FRAMES; i++) { const im = new Image(); im.src = "img/jale_" + String(i+1).padStart(2,"0") + ".jpg"; imgs.push(im); }
   let frameAR = 340/655;
   imgs[0].onload = () => { frameAR = imgs[0].naturalWidth / imgs[0].naturalHeight; };
   const pbuf = document.createElement("canvas"); const pbx = pbuf.getContext("2d");
 
-  // which footage frame to show
+  // which footage frame: static when idle; on attack play the video forward then back to start
   function playerFrame() {
     const p = player;
-    if (p.bonkT >= 0) {                                  // attack: 15 -> 31 -> 15
-      const t = Math.min(p.bonkT / BONK_DUR, 1), span = FRAMES - 1 - SMILE;
-      return t < 0.5 ? SMILE + Math.round((t/0.5)*span) : (FRAMES-1) - Math.round(((t-0.5)/0.5)*span);
+    if (p.bonkT >= 0) {
+      const t = Math.min(p.bonkT / BONK_DUR, 1);
+      const tri = t < 0.5 ? t * 2 : (1 - t) * 2;   // 0 -> end -> 0 (smooth return, no snap)
+      return Math.round(tri * (FRAMES - 1));
     }
-    const c = (idleClock % 2.2) / 2.2, tri = c < 0.5 ? c*2 : (1-c)*2;   // idle loop 0..15
-    return Math.round(tri * SMILE);
+    return 0;   // idle = static neutral frame
   }
 
   // ---------- Controls (remappable) ----------
@@ -157,7 +157,7 @@
   let flash = null;
   best = Number(localStorage.getItem("jaleClimbBest") || 0);
 
-  const GRAV = 1700, MOVE = 250, JUMP_V = 760, BONK_DUR = 0.5, BONK_CD = 0.22, BONK_R = 32;
+  const GRAV = 1700, MOVE = 250, JUMP_V = 760, BONK_DUR = 0.6, BONK_CD = 0.2, BONK_R = 32;
   const ROW_H = 130, FH = 16;       // corridor spacing / floor thickness
   const WALL_W = 24, WALL_H = 36;   // thick, jumpable dirt walls
   const PIXEL = 3;                  // pixel-art downscale factor for the world (not the video)
@@ -170,7 +170,7 @@
 
   function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i];a[i]=a[j];a[j]=t; } return a; }
   function rangeArr(a,b){ const r=[]; for(let i=a;i<=b;i++) r.push(i); return r; }
-  const PLW = 40, PLH = 72;
+  const PLW = 36, PLH = 52;
 
   // Closed maze: solid full-width floors every ROW_H, each with ONE staggered gap to climb
   // through; thick jumpable dirt walls partition the corridors. Verified solvable (the gap
@@ -283,13 +283,13 @@
 
   // ---------- Update ----------
   function bonkPoint() {
-    // hitbox in front of the goblin's head (the footage tilts the head forward)
-    return { x: player.x + player.w/2 + player.facing * (player.w*0.5 + 18), y: player.y + 16 };
+    // hitbox in front of the goblin, down at monster height (the tilted nose reaches there)
+    return { x: player.x + player.w/2 + player.facing * (player.w*0.5 + 16), y: player.y + player.h - 18 };
   }
 
   function update(dt) {
+    if (window.__FREEZE) return;
     const p = player;
-    idleClock += dt;
     // input -> horizontal
     let dir = 0;
     if (actionDown("left")) dir -= 1;
@@ -436,26 +436,26 @@
     }
     enemyBody(cx, cy, e, Math.sin(e.ph)*2);
   }
-  const LEG_H = 16;
+  const LEG_H = 12;
   function drawLegs() {   // pixel-art, drawn into the low-res world buffer
     const p = player; const ys = p.y - cam.y;
     if (p.invuln > 0 && Math.floor(p.invuln*16)%2===0) return; // blink
     const cx = p.x + p.w/2;
-    const swing = (Math.abs(p.vx)>5 && p.grounded) ? Math.sin(p.walkPh)*5 : 0;
+    const swing = (Math.abs(p.vx)>5 && p.grounded) ? Math.sin(p.walkPh)*4 : 0;
     ctx.fillStyle = "#5aa12e";
-    ctx.fillRect(cx-11+swing, ys+p.h-LEG_H, 8, LEG_H);
-    ctx.fillRect(cx+3-swing, ys+p.h-LEG_H, 8, LEG_H);
+    ctx.fillRect(cx-10+swing, ys+p.h-LEG_H, 7, LEG_H);
+    ctx.fillRect(cx+3-swing, ys+p.h-LEG_H, 7, LEG_H);
     ctx.fillStyle = "#3c6e1f";   // feet
-    ctx.fillRect(cx-13+swing, ys+p.h-4, 12, 4);
-    ctx.fillRect(cx+1-swing, ys+p.h-4, 12, 4);
+    ctx.fillRect(cx-12+swing, ys+p.h-4, 11, 4);
+    ctx.fillRect(cx+1-swing, ys+p.h-4, 11, 4);
   }
   function drawBody() {   // the FULL video frame, smooth, drawn on the real canvas on top
     const p = player; const ys = p.y - cam.y;
     if (p.invuln > 0 && Math.floor(p.invuln*16)%2===0) return;
     const f = imgs[playerFrame()];
     if (!f || !f.complete || !f.naturalWidth) return;
-    const figH = p.h + 24, figW = figH * frameAR;        // whole frame shown (entire video visible)
-    const cx = p.x + p.w/2, figTop = (ys + p.h - LEG_H + 6) - figH;
+    const figH = p.h + 12, figW = figH * frameAR;        // whole frame shown, kept short
+    const cx = p.x + p.w/2, figTop = (ys + p.h - LEG_H + 4) - figH;
     realCtx.save(); realCtx.imageSmoothingEnabled = true; realCtx.translate(cx, 0);
     if (p.facing < 0) realCtx.scale(-1, 1);
     realCtx.drawImage(f, -figW/2, figTop, figW, figH);
@@ -558,6 +558,9 @@
     btn.addEventListener("touchstart",on,{passive:false}); btn.addEventListener("touchend",off,{passive:false});
   });
 
+  if (location.hash.startsWith("#test")) setTimeout(()=>{ startGame();
+    if (location.hash==="#test-bonk") { player.bonkT = BONK_DUR*0.92; window.__FREEZE = true; }
+  }, 700);
 })();
 </script>
 </body>
