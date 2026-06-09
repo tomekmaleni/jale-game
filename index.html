@@ -535,6 +535,24 @@
     realCtx.drawImage(f, -figW/2, figTop, figW, figH);
     realCtx.restore();
   }
+  function drawBeam() {   // short light beam from the nose showing the bonk's effective range
+    const p = player; const dir = p.facing;
+    const noseX = p.x + p.w/2 + dir * (p.w/2 + 2);
+    const noseY = (p.y + p.h - 30) - cam.y;                 // at his head/nose height
+    const reachEdge = p.x + p.w/2 + dir * (p.w/2 + 16 + BONK_R);   // front edge of the hit zone
+    const pulse = (p.bonkT >= 0) ? 1 : 0.55 + 0.15 * Math.sin(idleClock * 6);
+    realCtx.save();
+    realCtx.lineCap = "round"; realCtx.lineWidth = (p.bonkT >= 0) ? 6 : 4;
+    realCtx.shadowColor = "#9fe8ff"; realCtx.shadowBlur = 12;
+    const g = realCtx.createLinearGradient(noseX, 0, reachEdge, 0);
+    g.addColorStop(0, "rgba(190,240,255," + (0.95*pulse) + ")");
+    g.addColorStop(1, "rgba(120,200,255,0)");
+    realCtx.strokeStyle = g;
+    realCtx.beginPath(); realCtx.moveTo(noseX, noseY); realCtx.lineTo(reachEdge, noseY); realCtx.stroke();
+    realCtx.fillStyle = "rgba(225,250,255," + pulse + ")";
+    realCtx.beginPath(); realCtx.arc(reachEdge, noseY, (p.bonkT >= 0) ? 4 : 3, 0, Math.PI*2); realCtx.fill();
+    realCtx.restore();
+  }
 
   function drawHUD() {
     ctx.fillStyle="#fff"; ctx.font="700 32px 'Trebuchet MS',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="top";
@@ -586,7 +604,7 @@
     realCtx.drawImage(lbuf, 0, 0, lbuf.width, lbuf.height, 0, 0, W, H);
     realCtx.imageSmoothingEnabled = true;
     // ----- the video (smooth) + HUD on top -----
-    if (state === "playing" || state === "over") { drawBody(); drawHUD(); }
+    if (state === "playing" || state === "over") { drawBody(); if (state === "playing") drawBeam(); drawHUD(); }
   }
   function roundRect(x,y,w,h,r){ r=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
