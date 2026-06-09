@@ -79,7 +79,8 @@
       <label style="font-size:13px">Right cut <input id="eCut" type="range" min="0" max="100" value="74" style="vertical-align:middle"></label>
       <span id="eCutVal" style="color:var(--gold);font-weight:700"></span>
       <button class="btn ghost" id="eClear">Clear outline</button>
-      <button class="btn" id="eCopy">Copy data</button>
+      <button class="btn" id="eDownload">Download data</button>
+      <button class="btn ghost" id="eCopy">Copy</button>
       <button class="btn ghost" id="eDone">Close</button>
     </div>
     <textarea id="eOut" readonly style="width:90vw;max-width:680px;height:60px;font:11px monospace;background:#0a0f1c;color:#9fd;border:1px solid #333;border-radius:6px"></textarea>
@@ -101,6 +102,7 @@
   </div>
 </div>
 
+<script src="outlines.js"></script>
 <script>
 (() => {
   "use strict";
@@ -122,6 +124,10 @@
   for (let i = 0; i < FRAMES; i++) { const im = new Image(); im.src = "img/jale_" + String(i+1).padStart(2,"0") + ".jpg"; imgs.push(im); }
   let frameAR = 340/655;
   imgs[0].onload = () => { frameAR = imgs[0].naturalWidth / imgs[0].naturalHeight; };
+
+  // baked cut + traced outlines (from outlines.js, editable in the in-page editor)
+  const BAKED_CUT = (window.JALE_DATA && typeof window.JALE_DATA.cut === "number") ? window.JALE_DATA.cut : 0.79;
+  const BAKED_OUT = (window.JALE_DATA && window.JALE_DATA.outlines) ? window.JALE_DATA.outlines : {};
   const pbuf = document.createElement("canvas"); const pbx = pbuf.getContext("2d");
 
   // footage frame: attack plays the whole video (forward then back); walking shuffles the
@@ -500,8 +506,8 @@
     const cx = p.x + p.w/2;
     const headCY = feet - 30;                       // anchor his head near the top of the hitbox
     const figTop = headCY - HEAD_FRAC * figH;
-    const cut = (typeof window.JCUT === "number") ? window.JCUT : 0.74;   // right cut fraction
-    const poly = window.JOUT && window.JOUT[playerFrame()];               // optional traced outline
+    const cut = (typeof window.JCUT === "number") ? window.JCUT : BAKED_CUT;   // right cut fraction
+    const poly = (window.JOUT && window.JOUT[playerFrame()]) || BAKED_OUT[playerFrame()];  // traced outline
     realCtx.save();
     realCtx.beginPath(); realCtx.rect(0, 0, W, feet); realCtx.clip();   // cut the lower body at the feet
     realCtx.imageSmoothingEnabled = true; realCtx.translate(cx, 0);
@@ -613,8 +619,9 @@
   });
 
   // ---------- temporary cut / outline editor ----------
-  window.JCUT = Number(localStorage.getItem("jcut") || 0.74);
-  try { window.JOUT = JSON.parse(localStorage.getItem("jout") || "{}"); } catch (e) { window.JOUT = {}; }
+  { const lc = localStorage.getItem("jcut"); window.JCUT = (lc !== null) ? Number(lc) : BAKED_CUT;
+    const lo = localStorage.getItem("jout");
+    try { window.JOUT = lo ? JSON.parse(lo) : JSON.parse(JSON.stringify(BAKED_OUT)); } catch (e) { window.JOUT = JSON.parse(JSON.stringify(BAKED_OUT)); } }
   const editor = document.getElementById("editor");
   const ecanvas = document.getElementById("ecanvas"), ec = ecanvas.getContext("2d");
   const efIdx = document.getElementById("efIdx"), eCut = document.getElementById("eCut"), eCutVal = document.getElementById("eCutVal"), eOut = document.getElementById("eOut");
@@ -654,12 +661,17 @@
   document.getElementById("eNext").addEventListener("click", ()=>{ eFrame=(eFrame+1)%FRAMES; eDraw(); });
   document.getElementById("eClear").addEventListener("click", ()=>{ window.JOUT[eFrame]=[]; localStorage.setItem("jout",JSON.stringify(window.JOUT)); eDraw(); });
   document.getElementById("eCopy").addEventListener("click", ()=>{ eOut.select(); try{document.execCommand("copy");}catch(e){} if(navigator.clipboard) navigator.clipboard.writeText(eOut.value); });
+  document.getElementById("eDownload").addEventListener("click", ()=>{
+    const data = JSON.stringify({ cut: window.JCUT, outlines: window.JOUT });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([data], {type:"application/json"}));
+    a.download = "jale-outline.json"; document.body.appendChild(a); a.click(); a.remove();
+  });
   document.getElementById("editBtn").addEventListener("click", ()=>{ startScreen.classList.add("hidden"); editor.classList.remove("hidden"); eCut.value=Math.round((window.JCUT||0.74)*100); eDraw(); });
   document.getElementById("eDone").addEventListener("click", ()=>{ editor.classList.add("hidden"); startScreen.classList.remove("hidden"); });
   if (location.hash === "#edit") setTimeout(()=>document.getElementById("editBtn").click(), 600);
 
   if (location.hash.startsWith("#test")) setTimeout(()=>{ startGame();
-    if (location.hash==="#test-bonk") { player.bonkT = BONK_DUR*0.92; window.__FREEZE = true; }
+    if (location.hash==="#test-bonk") { player.bonkT = BONK_DUR*0.5; window.__FREEZE = true; }
     if (location.hash==="#test-touch") touchEl.classList.remove("hidden");
   }, 700);
 })();
