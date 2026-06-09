@@ -1,38 +1,37 @@
-# Jale Bonk
+# Jale Goblin Climb
 
-A tiny browser timing game built from a night-time clip of Jale. His head loops
-from neutral into a big grin and back, over and over. Click at the exact moment
-his grin is fullest — the closer you nail the peak, the flashier the rank
-(GOOD → GREAT → EPIC → LEGENDARY) and the bigger the score. Miss it badly and you
-lose a life. It keeps getting faster.
+A tiny browser platformer where Jale is a little goblin (the night-clip footage is
+his head + body; pixel legs are added). Climb a procedurally generated **closed
+maze** of dirt corridors to the portal at the top of each level. **Bonk** enemies
+with your head to splat them; touch one without bonking and you lose a life.
+Collect every gem to open the portal. Score for kills and cleared levels — and it
+gets taller and busier each level.
 
 ## Play
 
-Open `index.html` in a browser, or play the hosted version on GitHub Pages:
-https://tomekmaleni.github.io/jale-game/
+https://tomekmaleni.github.io/jale-game/ — or open `index.html`.
 
-- **Mouse / touch:** click or tap at the peak of the grin
-- **Keyboard:** Space (or Enter) at the peak
+- **Desktop:** ◀ ▶ move · **Space** jump · **Right Ctrl** bonk (remappable in *Controls*; WASD/J also work)
+- **Mobile:** on-screen D-pad (left) + BONK button (right)
 
 ## How it's made
 
-The animation frames are pulled straight from
-`assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4`:
-
-- `img/jale_01.jpg … jale_21.jpg` — Jale going from a neutral pose into a grin
-  (the clip from ~t=4s to ~t=8.8s), brightened and centered.
-
-The game eases a sine "ping-pong" through those frames so the grin builds and
-relaxes; your click is scored on how close the grin was to its fullest frame.
-Everything is a single self-contained `index.html` (HTML canvas + vanilla JS,
-no dependencies, no build step). Sounds are synthesized with the Web Audio API.
+- `img/jale_01..32.jpg` — frames from `assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4`.
+  1–16 are the neutral→smile idle loop; 17–32 are the smile→tilt the head plays when
+  you bonk.
+- The **video is drawn smoothly**; everything else (dirt floors/walls, enemies,
+  gems, legs) is rendered into a low-res buffer and upscaled for a **pixel-art** look.
+- Levels are solid floors (one staggered gap each) with thick jumpable dirt walls,
+  generated and **verified solvable** before play. Single self-contained `index.html`
+  (canvas + vanilla JS, no dependencies). Sounds are synthesized with Web Audio.
 
 ### Re-extracting frames
 
-With `ffmpeg` installed:
-
 ```bash
-ffmpeg -ss 4.0 -i "assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4" -t 4.8 \
-  -vf "fps=4.4,eq=brightness=0.20:contrast=1.32:saturation=1.1,scale=432:-1" \
-  img/jale_%02d.jpg
+ffmpeg -ss 0.6 -i "assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4" -t 6.2 \
+  -vf "fps=2.58,crop=340:655:10:355,eq=brightness=0.24:contrast=1.4:saturation=1.15,scale=150:-1" \
+  -frames:v 16 img/jale_%02d.jpg
+ffmpeg -ss 6.9 -i "assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4" -t 1.8 \
+  -vf "fps=8.9,crop=340:655:10:355,eq=brightness=0.24:contrast=1.4:saturation=1.15,scale=150:-1" \
+  -frames:v 16 img/tilt_%02d.jpg   # then renamed jale_17..32
 ```

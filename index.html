@@ -3,64 +3,80 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>Jale Bonk</title>
+<title>Jale Goblin Climb</title>
 <style>
-  :root { --teal:#00A8CC; --blue:#0076BE; --navy:#003865; --gold:#ffd23f; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root { --teal:#00A8CC; --blue:#0076BE; --navy:#003865; --gold:#ffd23f; --green:#7ed957; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-user-select: none; user-select: none; }
   html, body { height: 100%; background: #05070d; overflow: hidden; }
-  body {
-    display: flex; align-items: center; justify-content: center;
-    font-family: 'Trebuchet MS', system-ui, sans-serif;
-    color: #eef3f8; touch-action: none;
-  }
+  body { display:flex; align-items:center; justify-content:center; font-family:'Trebuchet MS',system-ui,sans-serif; color:#eef3f8; touch-action:none; }
   #wrap { position: relative; width: 100vw; height: 100vh; }
-  canvas { display: block; width: 100%; height: 100%; }
+  canvas { display:block; width:100%; height:100%; }
 
-  .overlay {
-    position: absolute; inset: 0; z-index: 10;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center; text-align: center;
-    gap: 18px; padding: 24px;
-    background: radial-gradient(ellipse at center, rgba(0,56,101,.55), rgba(5,7,13,.93));
-  }
-  .overlay.hidden { display: none; }
-  .title {
-    font-size: clamp(38px, 9vw, 86px); font-weight: 800; letter-spacing: 2px;
-    color: #fff; text-shadow: 0 0 24px var(--teal), 0 4px 0 var(--navy);
-  }
-  .title span { color: var(--teal); }
-  .sub { font-size: clamp(15px, 3.6vw, 20px); max-width: 560px; line-height: 1.5; opacity: .92; }
-  .sub b { color: var(--teal); }
-  .btn {
-    margin-top: 8px; padding: 14px 38px; font-size: 20px; font-weight: 700;
-    color: #fff; cursor: pointer; border: none; border-radius: 999px;
-    background: linear-gradient(135deg, var(--teal), var(--blue));
-    box-shadow: 0 8px 24px rgba(0,168,204,.45); transition: transform .08s ease;
-  }
-  .btn:active { transform: scale(.95); }
-  .big-score { font-size: clamp(40px, 11vw, 96px); font-weight: 800; color: var(--teal); text-shadow: 0 0 30px rgba(0,168,204,.6); }
-  .go-label { font-size: clamp(26px,6vw,48px); font-weight: 800; }
-  .credit { position:absolute; bottom: 14px; font-size: 12px; opacity:.45; }
+  .overlay { position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:16px; padding:24px; background:radial-gradient(ellipse at center, rgba(0,56,101,.55), rgba(5,7,13,.94)); }
+  .overlay.hidden { display:none; }
+  .title { font-size:clamp(34px,8vw,76px); font-weight:800; letter-spacing:1px; color:#fff; text-shadow:0 0 24px var(--green), 0 4px 0 var(--navy); }
+  .title span { color: var(--green); }
+  .sub { font-size:clamp(14px,3.4vw,19px); max-width:560px; line-height:1.5; opacity:.92; }
+  .sub b { color: var(--green); }
+  .btn { margin-top:6px; padding:13px 34px; font-size:19px; font-weight:700; color:#fff; cursor:pointer; border:none; border-radius:999px; background:linear-gradient(135deg,var(--teal),var(--blue)); box-shadow:0 8px 24px rgba(0,168,204,.4); transition:transform .08s ease; }
+  .btn.ghost { background:rgba(255,255,255,.12); box-shadow:none; }
+  .btn:active { transform:scale(.95); }
+  .big-score { font-size:clamp(40px,11vw,92px); font-weight:800; color:var(--green); text-shadow:0 0 30px rgba(126,217,87,.5); }
+  .credit { position:absolute; bottom:12px; font-size:12px; opacity:.45; }
+
+  /* settings / key rebinding */
+  #bindList { display:flex; flex-direction:column; gap:10px; width:min(360px,86vw); }
+  .bindRow { display:flex; align-items:center; justify-content:space-between; background:rgba(255,255,255,.08); padding:10px 16px; border-radius:10px; }
+  .bindKey { font-weight:800; color:var(--gold); background:rgba(0,0,0,.35); padding:4px 12px; border-radius:8px; min-width:64px; cursor:pointer; }
+  .bindKey.listening { color:#fff; background:var(--teal); }
+
+  /* touch controls */
+  #touch { position:absolute; inset:0; z-index:15; pointer-events:none; }
+  #touch.hidden { display:none; }
+  .tbtn { position:absolute; pointer-events:auto; display:flex; align-items:center; justify-content:center;
+    background:rgba(255,255,255,.13); border:1px solid rgba(255,255,255,.25); color:#fff; border-radius:16px;
+    font-size:26px; font-weight:800; backdrop-filter: blur(2px); }
+  .tbtn:active { background:rgba(126,217,87,.4); }
+  #tLeft  { left:18px;  bottom:24px;  width:74px; height:74px; }
+  #tRight { left:104px; bottom:24px;  width:74px; height:74px; }
+  #tJump  { left:61px;  bottom:108px; width:74px; height:74px; }
+  #tBonk  { right:24px; bottom:36px;  width:104px; height:104px; border-radius:50%; background:rgba(126,217,87,.22); font-size:22px; }
 </style>
 </head>
 <body>
 <div id="wrap">
   <canvas id="game"></canvas>
 
+  <div id="touch" class="hidden">
+    <div id="tLeft"  class="tbtn" data-act="left">◀</div>
+    <div id="tRight" class="tbtn" data-act="right">▶</div>
+    <div id="tJump"  class="tbtn" data-act="jump">▲</div>
+    <div id="tBonk"  class="tbtn" data-act="bonk">BONK</div>
+  </div>
+
   <div id="startScreen" class="overlay">
-    <div class="title">JALE <span>BONK</span></div>
+    <div class="title">JALE <span>GOBLIN</span> CLIMB</div>
     <div class="sub">
-      Jale's head <b>loops</b> from neutral into a big grin and back, over and over.
-      <b>Click / tap / press Space</b> at the exact moment his grin is <b>fullest</b>.
-      The closer you nail the peak, the flashier the rank and the bigger the score.
-      Miss it badly and you lose a life — and it keeps getting faster.
+      Climb the tower to the <b>portal</b> at the top of each level. Move and jump,
+      and <b>bonk</b> enemies with your head to splat them. Touch one without bonking
+      and you lose a life. Score for every kill and every level cleared.
     </div>
+    <div class="sub" id="ctrlHint"></div>
     <button class="btn" id="startBtn">PLAY</button>
+    <button class="btn ghost" id="settingsBtn">Controls</button>
     <div class="credit">made with the footage from that night</div>
   </div>
 
+  <div id="settingsScreen" class="overlay hidden">
+    <div class="title" style="font-size:42px">CONTROLS</div>
+    <div class="sub">Click a key, then press the new one.</div>
+    <div id="bindList"></div>
+    <button class="btn ghost" id="resetBinds">Reset to defaults</button>
+    <button class="btn" id="closeSettings">Done</button>
+  </div>
+
   <div id="overScreen" class="overlay hidden">
-    <div class="go-label">GAME OVER</div>
+    <div class="title" style="font-size:46px">GAME OVER</div>
     <div class="big-score" id="finalScore">0</div>
     <div class="sub" id="bestLine">Best: 0</div>
     <button class="btn" id="againBtn">PLAY AGAIN</button>
@@ -70,211 +86,478 @@
 <script>
 (() => {
   "use strict";
-
-  // ---------- Logical resolution ----------
   const W = 960, H = 600;
   const canvas = document.getElementById("game");
-  const ctx = canvas.getContext("2d");
+  const realCtx = canvas.getContext("2d");
+  let ctx = realCtx, DPR = 1;   // ctx is swapped to the low-res buffer while drawing the pixel-art world
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+    realCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
   }
-  window.addEventListener("resize", resize);
-  resize();
+  window.addEventListener("resize", resize); resize();
 
-  // ---------- Frames ----------
-  // 1..21  = the loop (neutral -> grin), 22..32 = the tilt payoff (plays after a click)
-  const N = 32, LOOP_LAST = 15, TILT_LAST = N - 1;   // 1..16 loop (neutral->smile), 17..32 tilt
-  const frames = [];
-  for (let i = 1; i <= N; i++) { const im = new Image(); im.src = "img/jale_" + String(i).padStart(2, "0") + ".jpg"; frames.push(im); }
+  // ---------- Goblin = full footage (head+body) + drawn legs, pixel-art ----------
+  // frames 0..15 = neutral -> smile (idle loop); 15..31 = smile -> tilt (attack)
+  const FRAMES = 32, SMILE = 15;
+  const imgs = [];
+  for (let i = 0; i < FRAMES; i++) { const im = new Image(); im.src = "img/jale_" + String(i+1).padStart(2,"0") + ".jpg"; imgs.push(im); }
+  let frameAR = 340/655;
+  imgs[0].onload = () => { frameAR = imgs[0].naturalWidth / imgs[0].naturalHeight; };
+  const pbuf = document.createElement("canvas"); const pbx = pbuf.getContext("2d");
 
-  // ---------- Layout: Jale centered, fit to height ----------
-  let JX, JY, JW, JH;
-  function layout() {
-    const f = frames[0];
-    const nw = f.naturalWidth || 432, nh = f.naturalHeight || 768;
-    JH = H; JW = nw * (JH / nh); JY = 0; JX = (W - JW) / 2;
-  }
-  frames[0].onload = layout;
-  layout();
-
-  // ---------- Scoring tiers ----------
-  // err = how far the grin was from its fullest (0 = perfect peak).
-  const TIERS = [
-    { max: 0.030, name: "LEGENDARY", pts: 500, color: "#ffd23f" },
-    { max: 0.070, name: "EPIC",      pts: 300, color: "#b06bff" },
-    { max: 0.130, name: "GREAT",     pts: 150, color: "#00A8CC" },
-    { max: 0.200, name: "GOOD",      pts: 50,  color: "#5BC2E7" },
-  ];
-  const MISS = { name: "MISS", pts: 0, color: "#ff5d73" };
-  function judge(err) { for (const t of TIERS) if (err <= t.max) return t; return MISS; }
-
-  // ---------- State ----------
-  let state = "start";              // start | playing | over
-  let phase = "live";               // live (looping) | result (frozen flash)
-  let clock, oscStart, period;      // animation clock, current cycle start, cycle length
-  let score, lives, combo, attempts, best;
-  let result;                       // { tiltFrom, t, over }
-  let flash;                        // { name, color, pts, t }
-  best = Number(localStorage.getItem("jaleBonkBest") || 0);
-
-  const BASE_PERIOD = 1.9;          // s for a full neutral->grin->neutral loop
-  const periodFor = (a) => Math.max(0.7, BASE_PERIOD - a * 0.06);
-
-  // progress 0..1 across the tilt; sine ping-pong so it eases at the peak
-  function oscProgress() {
-    const w = (2 * Math.PI * (clock - oscStart)) / period;
-    return (1 - Math.cos(w)) / 2;
-  }
-  const loopFrame = (p) => Math.max(0, Math.min(LOOP_LAST, Math.round(p * LOOP_LAST)));
-  const TILT_DUR = 0.7;   // seconds for the post-click tilt to play out (slow enough to read)
-
-  function reset() {
-    score = 0; lives = 3; combo = 0; attempts = 0;
-    clock = 0; oscStart = 0; period = periodFor(0);
-    phase = "live"; result = null; flash = null;
+  // which footage frame to show
+  function playerFrame() {
+    const p = player;
+    if (p.bonkT >= 0) {                                  // attack: 15 -> 31 -> 15
+      const t = Math.min(p.bonkT / BONK_DUR, 1), span = FRAMES - 1 - SMILE;
+      return t < 0.5 ? SMILE + Math.round((t/0.5)*span) : (FRAMES-1) - Math.round(((t-0.5)/0.5)*span);
+    }
+    const c = (idleClock % 2.2) / 2.2, tri = c < 0.5 ? c*2 : (1-c)*2;   // idle loop 0..15
+    return Math.round(tri * SMILE);
   }
 
-  // ---------- Input (single click — catch the peak) ----------
-  function tap() {
-    if (state !== "playing" || phase !== "live") return;
-    const p = oscProgress();
-    const err = 1 - p;                       // distance from the fullest grin
-    const tier = judge(err);
-    if (tier.pts > 0) { combo++; const gain = tier.pts + (combo >= 3 ? (combo - 2) * 25 : 0); score += gain; flash = { name: tier.name, color: tier.color, pts: gain, t: 0 }; sndHit(tier); }
-    else { combo = 0; lives--; flash = { name: tier.name, color: tier.color, pts: 0, t: 0 }; sndMiss(); }
-    result = { tiltFrom: loopFrame(p), t: 0, over: lives <= 0 };   // tilt starts from where the grin was
-    phase = "result";
+  // ---------- Controls (remappable) ----------
+  const DEFAULTS = { left:"ArrowLeft", right:"ArrowRight", jump:"Space", bonk:"ControlRight" };
+  let keymap = Object.assign({}, DEFAULTS);
+  try { const s = JSON.parse(localStorage.getItem("jaleKeys")||"null"); if (s) keymap = Object.assign({}, DEFAULTS, s); } catch(e){}
+  const saveKeys = () => localStorage.setItem("jaleKeys", JSON.stringify(keymap));
+  const pressed = new Set();
+  const touchAct = { left:false, right:false, jump:false, bonk:false };
+  let rebinding = null;
+  function actionDown(a) {
+    if (touchAct[a]) return true;
+    if (pressed.has(keymap[a])) return true;
+    // friendly secondaries (WASD / arrows / J) so both schemes work
+    if (a==="left"  && (pressed.has("ArrowLeft")||pressed.has("KeyA"))) return true;
+    if (a==="right" && (pressed.has("ArrowRight")||pressed.has("KeyD"))) return true;
+    if (a==="jump"  && (pressed.has("ArrowUp")||pressed.has("Space")||pressed.has("KeyW"))) return true;
+    if (a==="bonk"  && pressed.has("KeyJ")) return true;
+    return false;
   }
-  canvas.addEventListener("mousedown", (e) => { e.preventDefault(); tap(); });
-  canvas.addEventListener("touchstart", (e) => { tap(); e.preventDefault(); }, { passive: false });
-  window.addEventListener("keydown", (e) => { if (e.code === "Space" || e.code === "Enter") { if (!e.repeat) tap(); e.preventDefault(); } });
+  function keyLabel(code) {
+    if (!code) return "—";
+    const map = { Space:"SPACE", ControlRight:"R-CTRL", ControlLeft:"L-CTRL", ShiftRight:"R-SHIFT", ShiftLeft:"L-SHIFT", ArrowLeft:"◀", ArrowRight:"▶", ArrowUp:"▲", ArrowDown:"▼" };
+    if (map[code]) return map[code];
+    return code.replace("Key","").replace("Arrow","").replace("Digit","") || code;
+  }
+  window.addEventListener("keydown", (e) => {
+    if (rebinding) { keymap[rebinding] = e.code; rebinding = null; saveKeys(); renderBinds(); e.preventDefault(); return; }
+    pressed.add(e.code);
+    if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","ControlRight"].includes(e.code)) e.preventDefault();
+  });
+  window.addEventListener("keyup", (e) => pressed.delete(e.code));
+
+  // ---------- Game state ----------
+  let state = "start";
+  let player, platforms, enemies, particles, walls, gems, solids, goalPlat, levelHeight, cam, level, score, lives, best;
+  let gemsTotal = 0, gemsGot = 0;
+  let jumpPrev = false, bonkPrev = false;
+  let idleClock = 0;
+  let flash = null;
+  best = Number(localStorage.getItem("jaleClimbBest") || 0);
+
+  const GRAV = 1700, MOVE = 250, JUMP_V = 760, BONK_DUR = 0.5, BONK_CD = 0.22, BONK_R = 32;
+  const ROW_H = 130, FH = 16;       // corridor spacing / floor thickness
+  const WALL_W = 24, WALL_H = 36;   // thick, jumpable dirt walls
+  const PIXEL = 3;                  // pixel-art downscale factor for the world (not the video)
+
+  // low-res buffer for the pixel-art world (the video is drawn smooth, separately)
+  const lbuf = document.createElement("canvas"); lbuf.width = Math.ceil(W/PIXEL); lbuf.height = Math.ceil(H/PIXEL);
+  const lctx = lbuf.getContext("2d");
+
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+  function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i];a[i]=a[j];a[j]=t; } return a; }
+  function rangeArr(a,b){ const r=[]; for(let i=a;i<=b;i++) r.push(i); return r; }
+  const PLW = 40, PLH = 72;
+
+  // Closed maze: solid full-width floors every ROW_H, each with ONE staggered gap to climb
+  // through; thick jumpable dirt walls partition the corridors. Verified solvable (the gap
+  // chain stays climbable). Regenerates until valid.
+  function genLevel(lvl) {
+    const rows = 5 + lvl * 2;
+    levelHeight = rows * ROW_H + 90;
+    const floorY = (r) => levelHeight - 30 - r * ROW_H;
+    let gaps;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      gaps = [];
+      let prev = -999;
+      let ok = true;
+      for (let r = 1; r <= rows; r++) {
+        const gw = 84 + Math.random()*32;
+        let gx = clamp(60 + Math.random()*(W-120-gw), 50, W-50-gw);
+        // keep this gap from sitting fully above the previous one, so there's solid to stand on/under
+        let tries = 0;
+        while (Math.abs((gx+gw/2) - prev) < gw + 30 && tries++ < 12) gx = clamp(60 + Math.random()*(W-120-gw), 50, W-50-gw);
+        gaps.push({ gx, gw }); prev = gx + gw/2;
+      }
+      if (solvableMaze(gaps, rows)) break;
+    }
+
+    platforms = []; enemies = []; particles = []; walls = []; gems = [];
+    platforms.push({ x:0, y:levelHeight-30, w:W, h:30, floor:true });   // ground
+    const gemRows = shuffle(rangeArr(1, rows-1)).slice(0, Math.min(rows-1, 3 + Math.floor(lvl*0.7)));
+
+    for (let r = 1; r <= rows; r++) {
+      const y = floorY(r), g = gaps[r-1];
+      // solid floor with one gap (two landing segments)
+      const leftW = g.gx, rightX = g.gx + g.gw;
+      if (leftW > 4) platforms.push({ x:0, y, w:leftW, h:FH });
+      if (W - rightX > 4) platforms.push({ x:rightX, y, w:W-rightX, h:FH });
+      const segs = [];
+      if (leftW > 50) segs.push([6, g.gx-6]);
+      if (W-rightX > 50) segs.push([rightX+6, W-6]);
+      if (!segs.length) segs.push([6, W-6]);
+      // thick dirt walls (jumpable) on this floor's segments
+      const nW = Math.random()<0.5 ? 1 : (Math.random()<0.45 ? 2 : 0);
+      for (let k=0;k<nW;k++) {
+        const s = segs[(Math.random()*segs.length)|0]; if (s[1]-s[0] < 90) continue;
+        const wx = clamp(s[0]+30 + Math.random()*(s[1]-s[0]-60-WALL_W), s[0]+20, s[1]-20-WALL_W);
+        walls.push({ x:wx, y:y-WALL_H, w:WALL_W, h:WALL_H });
+      }
+      // enemies confined to a floor segment (bounce off walls, can chase)
+      let eN = Math.random() < Math.min(0.92, 0.5 + lvl*0.06) ? (Math.random()<0.45 ? 2 : 1) : 0;
+      for (let k=0;k<eN;k++) { const s = segs[(Math.random()*segs.length)|0]; enemies.push(mkEnemy(y, s[0], s[1], lvl)); }
+      // gem (required), placed on a segment
+      if (gemRows.includes(r)) { const s = segs[(Math.random()*segs.length)|0]; gems.push({ x: clamp((s[0]+s[1])/2 + (Math.random()*60-30), s[0]+12, s[1]-12), y: y-22, r:9, got:false, ph:Math.random()*6 }); }
+    }
+    gemsTotal = gems.length; gemsGot = 0;
+
+    // goal portal above the top floor
+    const gw = 120, gx = clamp(W/2-60, 24, W-24-gw), gy = floorY(rows) - 70;
+    goalPlat = { x:gx, y:gy, w:gw, h:16, isGoal:true };
+    platforms.push(goalPlat);
+
+    solids = platforms.concat(walls);
+    player = { x: W/2-PLW/2, y: levelHeight-30-PLH, w:PLW, h:PLH, vx:0, vy:0, facing:1,
+               grounded:false, bonkT:-1, bonkCd:0, invuln:0, walkPh:0 };
+    cam = { y: levelHeight - H };
+  }
+
+  function mkEnemy(floorTopY, lo, hi, lvl) {
+    const ew=34, eh=28, ex = lo + Math.random()*Math.max(2, hi-lo-ew);
+    return { x:ex, y:floorTopY-eh, w:ew, h:eh, minX:lo, maxX:hi-ew, base:46+lvl*7, dir:(Math.random()<.5?-1:1), vx:0, alive:true, dying:0, ph:Math.random()*6 };
+  }
+
+  // Solvable iff every floor's gap is reachable: a floor's gap must not sit entirely above the
+  // floor below's gap (otherwise there's nowhere solid to stand to jump up). Floors are
+  // full-width-minus-one-gap and walls are jumpable, so each floor is fully traversable.
+  function solvableMaze(gaps, rows) {
+    for (let r = 1; r < rows; r++) {
+      const below = gaps[r-1], here = gaps[r];   // jumping from floor r up through gap of floor r+1
+      // standing room exists unless 'here' is fully contained within 'below'
+      const contained = here.gx >= below.gx && here.gx+here.gw <= below.gx+below.gw;
+      if (contained) return false;
+    }
+    return true;
+  }
+
+  function startGame() { level = 1; score = 0; lives = 3; flash = null; genLevel(level); state="playing"; hideOverlays(); }
+  function nextLevel() { level++; score += 1000; flash = { text:"LEVEL "+level, color:"#7ed957", t:0 }; genLevel(level); }
+  function gameOver() {
+    state = "over";
+    if (score > best) { best = score; localStorage.setItem("jaleClimbBest", String(best)); }
+    document.getElementById("finalScore").textContent = score;
+    document.getElementById("bestLine").textContent = "Best: " + best + "   ·   reached level " + level;
+    document.getElementById("overScreen").classList.remove("hidden");
+  }
+
+  function hurt(fromX) {
+    if (player.invuln > 0) return;
+    lives--; player.invuln = 1.3; player.vy = -340; player.vx = (player.x < fromX ? -1 : 1) * 260;
+    sndHurt(); if (lives <= 0) gameOver();
+  }
 
   // ---------- Audio ----------
-  let actx = null;
-  function audio() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return actx; }
-  function blip(freq, dur, type, vol, when) {
-    const a = audio(); if (!a) return;
-    const o = a.createOscillator(), g = a.createGain(); const t0 = a.currentTime + (when || 0);
-    o.type = type || "sine"; o.frequency.value = freq; g.gain.value = vol || 0.18;
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g); g.connect(a.destination); o.start(t0); o.stop(t0 + dur);
-  }
-  const sndMiss = () => blip(110, 0.35, "sawtooth", 0.14);
-  function sndHit(tier) {
-    const base = tier.pts >= 500 ? 523 : tier.pts >= 300 ? 440 : tier.pts >= 150 ? 392 : 330;
-    blip(base, 0.12, "square", 0.2);
-    if (tier.pts >= 150) blip(base * 1.5, 0.14, "square", 0.16, 0.06);
-    if (tier.pts >= 300) blip(base * 2, 0.16, "square", 0.14, 0.12);
-  }
+  let actx=null; function audio(){ if(!actx){ try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){} } return actx; }
+  function blip(f,d,t,v,w){ const a=audio(); if(!a)return; const o=a.createOscillator(),g=a.createGain(),t0=a.currentTime+(w||0); o.type=t||"sine"; o.frequency.value=f; g.gain.value=v||.18; g.gain.exponentialRampToValueAtTime(.0001,t0+d); o.connect(g);g.connect(a.destination);o.start(t0);o.stop(t0+d); }
+  const sndJump = () => blip(420,0.12,"square",0.12);
+  const sndBonk = () => { blip(200,0.09,"square",0.2); blip(520,0.08,"square",0.14,0.04); };
+  const sndKill = () => { blip(160,0.14,"sawtooth",0.18); blip(80,0.2,"triangle",0.14,0.05); };
+  const sndHurt = () => blip(110,0.35,"sawtooth",0.16);
+  const sndWin = () => { blip(523,0.1,"square",0.18); blip(659,0.1,"square",0.16,0.1); blip(784,0.16,"square",0.16,0.2); };
+  const sndGem = () => { blip(880,0.08,"sine",0.16); blip(1320,0.1,"sine",0.12,0.05); };
+
+  function splat(x,y,color){ for(let i=0;i<16;i++){ const a=Math.random()*Math.PI*2,s=70+Math.random()*230; particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-80,life:.5+Math.random()*.35,color,r:2+Math.random()*4}); } }
 
   // ---------- Update ----------
+  function bonkPoint() {
+    // hitbox in front of the goblin's head (the footage tilts the head forward)
+    return { x: player.x + player.w/2 + player.facing * (player.w*0.5 + 18), y: player.y + 16 };
+  }
+
   function update(dt) {
-    clock += dt;
-    if (phase === "result") {
-      result.t += dt; if (flash) flash.t += dt;
-      if (result.t >= 1.0) {
-        if (result.over) { gameOver(); return; }
-        attempts++; period = periodFor(attempts);   // speed up
-        oscStart = clock;                            // restart the loop from neutral
-        phase = "live";
+    const p = player;
+    idleClock += dt;
+    // input -> horizontal
+    let dir = 0;
+    if (actionDown("left")) dir -= 1;
+    if (actionDown("right")) dir += 1;
+    p.vx = dir * MOVE;
+    if (dir) p.facing = dir;
+    // jump (edge)
+    const jd = actionDown("jump");
+    if (jd && !jumpPrev && p.grounded) { p.vy = -JUMP_V; p.grounded = false; sndJump(); }
+    jumpPrev = jd;
+    // bonk (edge)
+    const bd = actionDown("bonk");
+    if (bd && !bonkPrev && p.bonkCd <= 0) { p.bonkT = 0; p.bonkCd = BONK_CD + BONK_DUR; sndBonk(); }
+    bonkPrev = bd;
+    if (p.bonkT >= 0) { p.bonkT += dt; if (p.bonkT >= BONK_DUR) p.bonkT = -1; }
+    if (p.bonkCd > 0) p.bonkCd -= dt;
+    if (p.invuln > 0) p.invuln -= dt;
+
+    // gravity + integrate
+    p.vy += GRAV * dt;
+    if (p.vy > 1400) p.vy = 1400;
+    // horizontal move + solid collision (walls AND floors are solid — no passing through)
+    p.x += p.vx * dt;
+    p.x = clamp(p.x, 0, W - p.w);
+    for (const s of solids) {
+      if (p.x < s.x+s.w && p.x+p.w > s.x && p.y+2 < s.y+s.h && p.y+p.h-2 > s.y) {
+        if (p.vx > 0) p.x = s.x - p.w; else if (p.vx < 0) p.x = s.x + s.w; p.vx = 0;
       }
     }
+    // vertical move + solid collision (swept, so fast falls can't tunnel thin floors)
+    const prevTop = p.y, prevBot = p.y + p.h;
+    p.y += p.vy * dt;
+    p.grounded = false;
+    for (const s of solids) {
+      if (!(p.x + p.w > s.x + 2 && p.x < s.x + s.w - 2)) continue;
+      if (p.vy >= 0 && prevBot <= s.y && p.y + p.h >= s.y) {            // land on top
+        p.y = s.y - p.h; p.vy = 0; p.grounded = true;
+        if (s.isGoal) {
+          if (gemsGot >= gemsTotal) { sndWin(); nextLevel(); return; }
+          else flash = { text:"COLLECT ALL GEMS", color:"#ffd23f", t:0, small:true };
+        }
+      } else if (p.vy < 0 && prevTop >= s.y + s.h && p.y <= s.y + s.h) { // bonk head
+        p.y = s.y + s.h; p.vy = 0;
+      }
+    }
+    if (p.y + p.h >= levelHeight) { p.y = levelHeight - p.h; p.vy = 0; p.grounded = true; }
+    // collect gems
+    for (const gm of gems) {
+      if (gm.got) continue; gm.ph += dt*4;
+      if (p.x < gm.x+gm.r && p.x+p.w > gm.x-gm.r && p.y < gm.y+gm.r && p.y+p.h > gm.y-gm.r) {
+        gm.got = true; gemsGot++; score += 75; splat(gm.x, gm.y, "#5BC2E7"); sndGem();
+        flash = { text:"GEM " + gemsGot + "/" + gemsTotal, color:"#5BC2E7", t:0, small:true };
+      }
+    }
+    if (Math.abs(p.vx) > 5 && p.grounded) p.walkPh += dt * 12;
+
+    // enemies: chase when they see you, bounce off walls, never leave their floor segment
+    const bp = (p.bonkT >= 0) ? bonkPoint() : null;
+    const pcx = p.x + p.w/2;
+    for (let i = enemies.length-1; i >= 0; i--) {
+      const e = enemies[i];
+      if (!e.alive) { e.dying += dt; if (e.dying >= 0.4) enemies.splice(i,1); continue; }
+      e.ph += dt*5;
+      // aggro: same corridor + within sight -> charge toward the player
+      const sameRow = Math.abs((p.y+p.h) - (e.y+e.h)) < ROW_H*0.6;
+      const aggro = sameRow && Math.abs(pcx - (e.x+e.w/2)) < 300;
+      if (aggro) e.dir = pcx < e.x+e.w/2 ? -1 : 1;
+      e.vx = e.dir * e.base * (aggro ? 2.1 : 1);
+      e.x += e.vx * dt;
+      // confine to floor segment
+      if (e.x <= e.minX) { e.x = e.minX; e.dir = 1; }
+      if (e.x >= e.maxX) { e.x = e.maxX; e.dir = -1; }
+      // bounce off solid walls (don't pass through)
+      for (const wl of walls) {
+        if (e.x < wl.x+wl.w && e.x+e.w > wl.x && e.y < wl.y+wl.h && e.y+e.h > wl.y) {
+          if (e.vx > 0) { e.x = wl.x - e.w; e.dir = -1; } else { e.x = wl.x + wl.w; e.dir = 1; }
+        }
+      }
+      const ecx = e.x+e.w/2, ecy = e.y+e.h/2;
+      if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < BONK_R + e.w/2) {
+        e.alive = false; e.dying = 0; score += 150; splat(ecx, ecy, "#7ed957"); sndKill();
+        flash = { text: "+150", color:"#7ed957", t:0, small:true }; continue;
+      }
+      if (p.invuln <= 0 && p.x < e.x+e.w && p.x+p.w > e.x && p.y < e.y+e.h && p.y+p.h > e.y) hurt(ecx);
+    }
+    // particles
+    for (let i=particles.length-1;i>=0;i--){ const q=particles[i]; q.life-=dt; q.x+=q.vx*dt; q.y+=q.vy*dt; q.vy+=900*dt; if(q.life<=0) particles.splice(i,1); }
+    // camera
+    cam.y = clamp(p.y + p.h/2 - H*0.62, 0, levelHeight - H);
+    if (flash) { flash.t += dt; if (flash.t > 1.1) flash = null; }
   }
 
   // ---------- Render ----------
   function drawBg() {
-    const bg = ctx.createLinearGradient(0, 0, W, H);
-    bg.addColorStop(0, "#0a1426"); bg.addColorStop(0.6, "#070a14"); bg.addColorStop(1, "#05070d");
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,"#0b1630"); g.addColorStop(0.6,"#0a1020"); g.addColorStop(1,"#05070d");
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // parallax light streaks
+    ctx.save(); ctx.globalAlpha=0.15; ctx.strokeStyle="#5BC2E7"; ctx.lineWidth=2;
+    const off = (-cam.y*0.3) % 120;
+    for (let yy=off% 120; yy<H; yy+=120){ ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(W,yy-30); ctx.stroke(); }
+    ctx.restore();
   }
-  function drawJale() {
-    let idx;
-    if (phase === "result") {
-      const k = Math.min(1, result.t / TILT_DUR);          // play the tilt: grin -> head-down
-      idx = Math.round(result.tiltFrom + (TILT_LAST - result.tiltFrom) * k);
-    } else {
-      idx = (state === "playing") ? loopFrame(oscProgress()) : 0;
+  function drawPlatform(pl) {
+    const y = pl.y - cam.y;
+    if (y > H+20 || y+pl.h < -20) return;
+    if (pl.isGoal) {
+      const open = gemsGot >= gemsTotal;
+      const col = open ? "#7ed957" : "#5a6680";
+      // portal glow above the goal platform
+      ctx.save(); const cx=pl.x+pl.w/2, py=y-32;
+      const rg=ctx.createRadialGradient(cx,py,4,cx,py,34);
+      if (open) { rg.addColorStop(0,"#eaffea"); rg.addColorStop(0.5,"rgba(126,217,87,.85)"); rg.addColorStop(1,"rgba(126,217,87,0)"); }
+      else { rg.addColorStop(0,"rgba(180,190,210,.5)"); rg.addColorStop(0.6,"rgba(90,102,128,.4)"); rg.addColorStop(1,"rgba(90,102,128,0)"); }
+      ctx.fillStyle=rg; ctx.beginPath(); ctx.ellipse(cx,py,24,34,0,0,Math.PI*2); ctx.fill();
+      if (!open) { ctx.fillStyle="#cdd6e6"; ctx.font="800 16px sans-serif"; ctx.textAlign="center"; ctx.fillText("🔒", cx, py+6); }
+      ctx.restore();
+      ctx.fillStyle = col; roundRect(pl.x, y, pl.w, pl.h, 6); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.25)"; ctx.fillRect(pl.x, y, pl.w, 3);
+      return;
     }
-    const f = frames[idx];
-    if (f && f.complete && f.naturalWidth) ctx.drawImage(f, JX, JY, JW, JH);
-    const g = ctx.createLinearGradient(0, 0, W, 0);
-    g.addColorStop(0, "rgba(5,7,13,0.9)"); g.addColorStop(0.18, "rgba(5,7,13,0)");
-    g.addColorStop(0.82, "rgba(5,7,13,0)"); g.addColorStop(1, "rgba(5,7,13,0.9)");
-    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = pl.floor ? "#4a3115" : "#6e4a23";      // dirt
+    ctx.fillRect(pl.x, y, pl.w, pl.h);
+    ctx.fillStyle = "#8a5f30"; ctx.fillRect(pl.x, y, pl.w, 4);   // lit top
+    ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.fillRect(pl.x, y+pl.h-3, pl.w, 3);
+  }
+  function enemyBody(cx, cy, e, bob) {
+    ctx.fillStyle="#5aa12e"; ctx.strokeStyle="#3c6e1f"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.ellipse(cx, cy+bob, e.w/2, e.h/2, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle="#5aa12e";
+    ctx.beginPath(); ctx.moveTo(cx-e.w/2, cy-4+bob); ctx.lineTo(cx-e.w/2-8, cy-12+bob); ctx.lineTo(cx-e.w/2+2, cy-2+bob); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx+e.w/2, cy-4+bob); ctx.lineTo(cx+e.w/2+8, cy-12+bob); ctx.lineTo(cx+e.w/2-2, cy-2+bob); ctx.fill();
+    const ex = Math.sign(e.vx)||1;
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx+ex*4-5, cy-3+bob, 4,0,Math.PI*2); ctx.arc(cx+ex*4+5, cy-3+bob,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6-5, cy-3+bob,2,0,Math.PI*2); ctx.arc(cx+ex*6+5, cy-3+bob,2,0,Math.PI*2); ctx.fill();
+  }
+  function drawEnemy(e) {
+    const y = e.y - cam.y; if (y > H+30 || y < -40) return;
+    const cx=e.x+e.w/2, cy=y+e.h/2;
+    if (!e.alive) {                                  // dying: shrink + spin + fade
+      const k = Math.min(e.dying/0.4, 1), s = 1-k; if (s <= 0) return;
+      ctx.save(); ctx.globalAlpha = 1-k; ctx.translate(cx,cy); ctx.rotate(k*5); ctx.scale(s,s); ctx.translate(-cx,-cy);
+      enemyBody(cx, cy, e, 0); ctx.restore(); return;
+    }
+    enemyBody(cx, cy, e, Math.sin(e.ph)*2);
+  }
+  const LEG_H = 16;
+  function drawLegs() {   // pixel-art, drawn into the low-res world buffer
+    const p = player; const ys = p.y - cam.y;
+    if (p.invuln > 0 && Math.floor(p.invuln*16)%2===0) return; // blink
+    const cx = p.x + p.w/2;
+    const swing = (Math.abs(p.vx)>5 && p.grounded) ? Math.sin(p.walkPh)*5 : 0;
+    ctx.fillStyle = "#5aa12e";
+    ctx.fillRect(cx-11+swing, ys+p.h-LEG_H, 8, LEG_H);
+    ctx.fillRect(cx+3-swing, ys+p.h-LEG_H, 8, LEG_H);
+    ctx.fillStyle = "#3c6e1f";   // feet
+    ctx.fillRect(cx-13+swing, ys+p.h-4, 12, 4);
+    ctx.fillRect(cx+1-swing, ys+p.h-4, 12, 4);
+  }
+  function drawBody() {   // the FULL video frame, smooth, drawn on the real canvas on top
+    const p = player; const ys = p.y - cam.y;
+    if (p.invuln > 0 && Math.floor(p.invuln*16)%2===0) return;
+    const f = imgs[playerFrame()];
+    if (!f || !f.complete || !f.naturalWidth) return;
+    const figH = p.h + 24, figW = figH * frameAR;        // whole frame shown (entire video visible)
+    const cx = p.x + p.w/2, figTop = (ys + p.h - LEG_H + 6) - figH;
+    realCtx.save(); realCtx.imageSmoothingEnabled = true; realCtx.translate(cx, 0);
+    if (p.facing < 0) realCtx.scale(-1, 1);
+    realCtx.drawImage(f, -figW/2, figTop, figW, figH);
+    realCtx.restore();
   }
 
   function drawHUD() {
-    ctx.fillStyle = "#fff"; ctx.font = "700 34px 'Trebuchet MS', sans-serif";
-    ctx.textAlign = "left"; ctx.textBaseline = "top";
-    ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 6; ctx.fillText(String(score), 24, 18); ctx.shadowBlur = 0;
-    if (combo >= 3) { ctx.fillStyle = "#ffd23f"; ctx.font = "700 18px 'Trebuchet MS',sans-serif"; ctx.fillText(combo + " streak", 26, 58); }
-    ctx.textAlign = "right"; ctx.font = "26px sans-serif";
-    let s = ""; for (let i = 0; i < 3; i++) s += i < lives ? "❤ " : "🖤 ";
-    ctx.fillText(s.trim(), W - 20, 20);
-    if (phase === "live") {
-      ctx.textAlign = "center"; ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 16px 'Trebuchet MS',sans-serif";
-      ctx.fillText("click at the peak of the grin", W / 2, H - 34);
-    }
+    ctx.fillStyle="#fff"; ctx.font="700 32px 'Trebuchet MS',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="top";
+    ctx.shadowColor="rgba(0,0,0,.6)"; ctx.shadowBlur=6; ctx.fillText(String(score),22,16); ctx.shadowBlur=0;
+    ctx.font="600 16px 'Trebuchet MS',sans-serif"; ctx.fillStyle="rgba(255,255,255,.7)"; ctx.fillText("LEVEL "+level,24,52);
+    ctx.textAlign="right"; ctx.font="24px sans-serif"; let s=""; for(let i=0;i<3;i++) s+= i<lives?"❤ ":"🖤 "; ctx.fillText(s.trim(), W-20, 18);
+    // climb progress bar (right edge)
+    const prog = clamp(1 - (player.y - 120) / (levelHeight - 120), 0, 1);
+    ctx.fillStyle="rgba(255,255,255,.12)"; roundRect(W-16, 70, 8, H-150, 4); ctx.fill();
+    ctx.fillStyle="#7ed957"; const bh=(H-150); roundRect(W-16, 70+bh*(1-prog), 8, bh*prog, 4); ctx.fill();
+    if (flash) { const a=flash.t<0.8?1:1-(flash.t-0.8)/0.3; ctx.save(); ctx.globalAlpha=Math.max(0,a); ctx.textAlign="center"; ctx.fillStyle=flash.color; ctx.shadowColor=flash.color; ctx.shadowBlur=20; ctx.font=(flash.small?"800 30px":"800 56px")+" 'Trebuchet MS',sans-serif"; ctx.fillText(flash.text, W/2, flash.small? 120 : H*0.32); ctx.restore(); }
   }
 
-  function drawFlash() {
-    if (!flash) return;
-    const t = flash.t, dur = 0.85;
-    if (t > dur) return;
-    const k = Math.min(1, t / 0.18);
-    const fade = t > 0.55 ? 1 - (t - 0.55) / 0.3 : 1;
-    const scale = 0.6 + 0.4 * (k < 1 ? easeOutBack(k) : 1);
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, fade);
-    ctx.translate(W / 2, H * 0.4);
-    ctx.scale(scale, scale);
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillStyle = flash.color; ctx.shadowColor = flash.color; ctx.shadowBlur = 30;
-    ctx.font = "800 64px 'Trebuchet MS', sans-serif";
-    ctx.fillText(flash.name, 0, 0);
-    ctx.shadowBlur = 0;
-    if (flash.pts > 0) { ctx.fillStyle = "#fff"; ctx.font = "700 28px 'Trebuchet MS', sans-serif"; ctx.fillText("+" + flash.pts, 0, 52); }
-    else { ctx.fillStyle = "#fff"; ctx.font = "700 22px 'Trebuchet MS', sans-serif"; ctx.fillText("clicked too early", 0, 48); }
+  function drawWall(wl) {
+    const y = wl.y - cam.y; if (y > H+10 || y+wl.h < -10) return;
+    ctx.fillStyle = "#c8803a"; ctx.fillRect(wl.x, y, wl.w, wl.h);              // orange dirt
+    ctx.fillStyle = "#e0a05a"; ctx.fillRect(wl.x, y, wl.w, 4);                 // lit top
+    ctx.fillStyle = "rgba(0,0,0,.22)"; ctx.fillRect(wl.x+wl.w-4, y, 4, wl.h);  // shaded side
+  }
+  function drawGem(gm) {
+    if (gm.got) return; const y = gm.y - cam.y; if (y > H+20 || y < -20) return;
+    const bob = Math.sin(gm.ph)*3, r = gm.r;
+    ctx.save(); ctx.translate(gm.x, y+bob);
+    ctx.shadowColor = "#5BC2E7"; ctx.shadowBlur = 14;
+    ctx.fillStyle = "#5BC2E7"; ctx.beginPath();
+    ctx.moveTo(0,-r*1.3); ctx.lineTo(r,-r*0.1); ctx.lineTo(0,r*1.3); ctx.lineTo(-r,-r*0.1); ctx.closePath(); ctx.fill();
+    ctx.shadowBlur=0; ctx.fillStyle="rgba(255,255,255,.7)"; ctx.beginPath();
+    ctx.moveTo(0,-r*1.3); ctx.lineTo(r*0.45,-r*0.1); ctx.lineTo(0,r*0.2); ctx.lineTo(-r*0.45,-r*0.1); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
-
   function render() {
+    // ----- pixel-art world into the low-res buffer (ctx is swapped to lctx) -----
+    ctx = lctx;
+    lctx.setTransform(1/PIXEL, 0, 0, 1/PIXEL, 0, 0);
+    lctx.imageSmoothingEnabled = false;
     drawBg();
-    drawJale();
-    if (state === "playing") { drawHUD(); drawFlash(); }
+    if (state === "playing" || state === "over") {
+      for (const pl of platforms) drawPlatform(pl);
+      for (const wl of walls) drawWall(wl);
+      for (const gm of gems) drawGem(gm);
+      for (const e of enemies) drawEnemy(e);
+      drawLegs();
+      for (const q of particles){ ctx.globalAlpha=Math.max(0,q.life*1.6); ctx.fillStyle=q.color; ctx.fillRect(q.x-q.r, q.y-cam.y-q.r, q.r*2, q.r*2); }
+      ctx.globalAlpha=1;
+    }
+    // ----- upscale (nearest) to the screen = pixel art -----
+    ctx = realCtx;
+    realCtx.imageSmoothingEnabled = false;
+    realCtx.clearRect(0, 0, W, H);
+    realCtx.drawImage(lbuf, 0, 0, lbuf.width, lbuf.height, 0, 0, W, H);
+    realCtx.imageSmoothingEnabled = true;
+    // ----- the video (smooth) + HUD on top -----
+    if (state === "playing" || state === "over") { drawBody(); drawHUD(); }
   }
-
-  // ---------- helpers ----------
-  function easeOutBack(x) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
+  function roundRect(x,y,w,h,r){ r=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
   // ---------- Loop ----------
-  let last = 0;
-  function frame(ts) {
-    const dt = last ? Math.min(0.05, (ts - last) / 1000) : 0;
-    last = ts;
-    try { if (state === "playing") update(dt); render(); } catch (e) { console.error(e); }
-    requestAnimationFrame(frame);
-  }
-  reset();
+  let last=0;
+  function frame(ts){ const dt=last?Math.min(0.045,(ts-last)/1000):0; last=ts; try{ if(state==="playing") update(dt); render(); }catch(e){ console.error(e); } requestAnimationFrame(frame); }
   requestAnimationFrame(frame);
 
-  // ---------- Screens ----------
-  const startScreen = document.getElementById("startScreen");
-  const overScreen = document.getElementById("overScreen");
-  const finalScore = document.getElementById("finalScore");
-  const bestLine = document.getElementById("bestLine");
-  function startGame() { reset(); state = "playing"; startScreen.classList.add("hidden"); overScreen.classList.add("hidden"); audio(); }
-  function gameOver() {
-    state = "over";
-    if (score > best) { best = score; localStorage.setItem("jaleBonkBest", String(best)); }
-    finalScore.textContent = score; bestLine.textContent = "Best: " + best; overScreen.classList.remove("hidden");
+  // ---------- Screens / UI ----------
+  const startScreen=document.getElementById("startScreen"), settingsScreen=document.getElementById("settingsScreen"), overScreen=document.getElementById("overScreen");
+  function hideOverlays(){ startScreen.classList.add("hidden"); settingsScreen.classList.add("hidden"); overScreen.classList.add("hidden"); }
+  document.getElementById("startBtn").addEventListener("click", ()=>{ audio(); startGame(); });
+  document.getElementById("againBtn").addEventListener("click", ()=>{ audio(); startGame(); });
+  document.getElementById("settingsBtn").addEventListener("click", ()=>{ startScreen.classList.add("hidden"); settingsScreen.classList.remove("hidden"); renderBinds(); });
+  document.getElementById("closeSettings").addEventListener("click", ()=>{ settingsScreen.classList.add("hidden"); startScreen.classList.remove("hidden"); });
+  document.getElementById("resetBinds").addEventListener("click", ()=>{ keymap=Object.assign({},DEFAULTS); saveKeys(); renderBinds(); });
+
+  const bindList=document.getElementById("bindList");
+  function renderBinds(){
+    const acts=[["left","Move left"],["right","Move right"],["jump","Jump"],["bonk","Bonk"]];
+    bindList.innerHTML="";
+    for(const [a,label] of acts){
+      const row=document.createElement("div"); row.className="bindRow";
+      const span=document.createElement("span"); span.textContent=label;
+      const key=document.createElement("span"); key.className="bindKey"+(rebinding===a?" listening":""); key.textContent=rebinding===a?"press…":keyLabel(keymap[a]);
+      key.addEventListener("click", ()=>{ rebinding=a; renderBinds(); });
+      row.appendChild(span); row.appendChild(key); bindList.appendChild(row);
+    }
   }
-  document.getElementById("startBtn").addEventListener("click", startGame);
-  document.getElementById("againBtn").addEventListener("click", startGame);
-  bestLine.textContent = "Best: " + best;
+  document.getElementById("ctrlHint").innerHTML = "Desktop: <b>"+keyLabel(keymap.left)+" "+keyLabel(keymap.right)+"</b> move · <b>"+keyLabel(keymap.jump)+"</b> jump · <b>"+keyLabel(keymap.bonk)+"</b> bonk";
+
+  // ---------- Touch controls ----------
+  const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints>0;
+  const touchEl=document.getElementById("touch");
+  if (isTouch) touchEl.classList.remove("hidden");
+  touchEl.querySelectorAll(".tbtn").forEach(btn=>{
+    const act=btn.dataset.act;
+    const on=(e)=>{ touchAct[act]=true; e.preventDefault(); audio(); };
+    const off=(e)=>{ touchAct[act]=false; e.preventDefault(); };
+    btn.addEventListener("pointerdown",on); btn.addEventListener("pointerup",off);
+    btn.addEventListener("pointercancel",off); btn.addEventListener("pointerleave",off);
+    btn.addEventListener("touchstart",on,{passive:false}); btn.addEventListener("touchend",off,{passive:false});
+  });
+
 })();
 </script>
 </body>
