@@ -11,7 +11,7 @@
   body { display:flex; align-items:center; justify-content:center; font-family:'Trebuchet MS',system-ui,sans-serif; color:#eef3f8; touch-action:none; }
   #wrap { position: relative; width: 100vw; height: 100vh; }
   #game { display:block; width:100%; height:100%; }
-  #ecanvas { display:block; max-width:92vw; }
+  #ecanvas { display:block; max-width:92vw; touch-action:none; }
 
   .overlay { position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:16px; padding:24px; background:radial-gradient(ellipse at center, rgba(0,56,101,.55), rgba(5,7,13,.94)); }
   .overlay.hidden { display:none; }
@@ -71,7 +71,7 @@
 
   <div id="editor" class="overlay hidden" style="justify-content:flex-start; gap:8px; padding:10px; background:#05070df2;">
     <div style="font-weight:800">CUT / OUTLINE EDITOR — frame <span id="efIdx">1</span>/<span id="efN">29</span></div>
-    <div style="font-size:12px;opacity:.8;max-width:640px">Drag <b>Right cut</b> to set where to trim (red line) — tell me the value. Or <b>click on the image</b> to trace Jale's outline point-by-point (per frame), then Copy.</div>
+    <div style="font-size:12px;opacity:.8;max-width:640px">Drag <b>Right cut</b> to set where to trim (red line) — tell me the value. Or <b>press and drag on the image</b> to trace Jale's outline (per frame), then Copy.</div>
     <canvas id="ecanvas" style="border:1px solid #444; cursor:crosshair; max-height:62vh;"></canvas>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:center;">
       <button class="btn ghost" id="ePrev">◀ Prev</button>
@@ -637,7 +637,18 @@
     efIdx.textContent = eFrame+1; eCutVal.textContent = "cut " + (eCut.value/100).toFixed(3);
     eOut.value = JSON.stringify({ cut: +(eCut.value/100).toFixed(3), outlines: window.JOUT });
   }
-  ecanvas.addEventListener("click", (e)=>{ const r=ecanvas.getBoundingClientRect(); const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height; (window.JOUT[eFrame]=window.JOUT[eFrame]||[]).push([+x.toFixed(3),+y.toFixed(3)]); localStorage.setItem("jout",JSON.stringify(window.JOUT)); eDraw(); });
+  // freehand outline: press and drag to trace
+  let eDrawing = false;
+  function eAddPt(e){
+    const r=ecanvas.getBoundingClientRect();
+    const x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+    const arr=window.JOUT[eFrame];
+    if (arr.length){ const l=arr[arr.length-1]; if (Math.hypot(x-l[0],y-l[1])<0.012) return; }   // thin out points
+    arr.push([+x.toFixed(3),+y.toFixed(3)]);
+  }
+  ecanvas.addEventListener("pointerdown",(e)=>{ eDrawing=true; window.JOUT[eFrame]=[]; eAddPt(e); eDraw(); e.preventDefault(); });
+  ecanvas.addEventListener("pointermove",(e)=>{ if(eDrawing){ eAddPt(e); eDraw(); } });
+  window.addEventListener("pointerup",()=>{ if(eDrawing){ eDrawing=false; localStorage.setItem("jout",JSON.stringify(window.JOUT)); eDraw(); } });
   eCut.addEventListener("input", ()=>{ window.JCUT = eCut.value/100; localStorage.setItem("jcut", String(window.JCUT)); eDraw(); });
   document.getElementById("ePrev").addEventListener("click", ()=>{ eFrame=(eFrame-1+FRAMES)%FRAMES; eDraw(); });
   document.getElementById("eNext").addEventListener("click", ()=>{ eFrame=(eFrame+1)%FRAMES; eDraw(); });
