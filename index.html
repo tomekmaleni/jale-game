@@ -106,7 +106,9 @@
   imgs[0].onload = () => { frameAR = imgs[0].naturalWidth / imgs[0].naturalHeight; };
   const pbuf = document.createElement("canvas"); const pbx = pbuf.getContext("2d");
 
-  // which footage frame: static when idle; on attack play the video forward then back to start
+  // footage frame: attack plays the whole video (forward then back); walking shuffles the
+  // first few frames; idle is static.
+  const WALK_MAX = 3;
   function playerFrame() {
     const p = player;
     if (p.bonkT >= 0) {
@@ -114,6 +116,7 @@
       const tri = t < 0.5 ? t * 2 : (1 - t) * 2;   // 0 -> end -> 0 (smooth return, no snap)
       return Math.round(tri * (FRAMES - 1));
     }
+    if (Math.abs(p.vx) > 5 && p.grounded) return Math.round((Math.sin(p.walkPh)*0.5 + 0.5) * WALK_MAX);
     return 0;   // idle = static neutral frame
   }
 
@@ -170,7 +173,7 @@
 
   function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i];a[i]=a[j];a[j]=t; } return a; }
   function rangeArr(a,b){ const r=[]; for(let i=a;i<=b;i++) r.push(i); return r; }
-  const PLW = 36, PLH = 52;
+  const PLW = 32, PLH = 46;
 
   // Closed maze: solid full-width floors every ROW_H, each with ONE staggered gap to climb
   // through; thick jumpable dirt walls partition the corridors. Verified solvable (the gap
@@ -236,7 +239,7 @@
   }
 
   function mkEnemy(floorTopY, lo, hi, lvl) {
-    const ew=34, eh=28, ex = lo + Math.random()*Math.max(2, hi-lo-ew);
+    const ew=32, eh=44, ex = lo + Math.random()*Math.max(2, hi-lo-ew);   // taller, with legs
     return { x:ex, y:floorTopY-eh, w:ew, h:eh, minX:lo, maxX:hi-ew, base:46+lvl*7, dir:(Math.random()<.5?-1:1), vx:0, alive:true, dying:0, ph:Math.random()*6 };
   }
 
@@ -416,46 +419,44 @@
     ctx.fillStyle = "#8a5f30"; ctx.fillRect(pl.x, y, pl.w, 4);   // lit top
     ctx.fillStyle = "rgba(0,0,0,.25)"; ctx.fillRect(pl.x, y+pl.h-3, pl.w, 3);
   }
-  function enemyBody(cx, cy, e, bob) {
+  function enemyBody(cx, top, e, bob) {   // top = screen y of the enemy's top
+    const legH = 12, bodyH = e.h - legH, by = top + bob;
+    const ex = e.dir || Math.sign(e.vx) || 1;
+    const walk = Math.sin(e.ph) * 3;
+    // legs
+    ctx.fillStyle = "#3c6e1f";
+    ctx.fillRect(cx-9+walk, by+bodyH-2, 7, legH);
+    ctx.fillRect(cx+2-walk, by+bodyH-2, 7, legH);
+    // body
+    const cyB = by + bodyH/2;
     ctx.fillStyle="#5aa12e"; ctx.strokeStyle="#3c6e1f"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.ellipse(cx, cy+bob, e.w/2, e.h/2, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, cyB, e.w/2, bodyH/2, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    // ears
     ctx.fillStyle="#5aa12e";
-    ctx.beginPath(); ctx.moveTo(cx-e.w/2, cy-4+bob); ctx.lineTo(cx-e.w/2-8, cy-12+bob); ctx.lineTo(cx-e.w/2+2, cy-2+bob); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(cx+e.w/2, cy-4+bob); ctx.lineTo(cx+e.w/2+8, cy-12+bob); ctx.lineTo(cx+e.w/2-2, cy-2+bob); ctx.fill();
-    const ex = Math.sign(e.vx)||1;
-    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx+ex*4-5, cy-3+bob, 4,0,Math.PI*2); ctx.arc(cx+ex*4+5, cy-3+bob,4,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6-5, cy-3+bob,2,0,Math.PI*2); ctx.arc(cx+ex*6+5, cy-3+bob,2,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx-e.w/2, cyB-6); ctx.lineTo(cx-e.w/2-8, cyB-16); ctx.lineTo(cx-e.w/2+2, cyB-4); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx+e.w/2, cyB-6); ctx.lineTo(cx+e.w/2+8, cyB-16); ctx.lineTo(cx+e.w/2-2, cyB-4); ctx.fill();
+    // eyes (look toward movement)
+    ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx+ex*4-5, cyB-3, 4,0,Math.PI*2); ctx.arc(cx+ex*4+5, cyB-3,4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6-5, cyB-3,2,0,Math.PI*2); ctx.arc(cx+ex*6+5, cyB-3,2,0,Math.PI*2); ctx.fill();
   }
   function drawEnemy(e) {
-    const y = e.y - cam.y; if (y > H+30 || y < -40) return;
-    const cx=e.x+e.w/2, cy=y+e.h/2;
+    const top = e.y - cam.y; if (top > H+30 || top+e.h < -10) return;
+    const cx=e.x+e.w/2;
     if (!e.alive) {                                  // dying: shrink + spin + fade
       const k = Math.min(e.dying/0.4, 1), s = 1-k; if (s <= 0) return;
+      const cy = top + e.h/2;
       ctx.save(); ctx.globalAlpha = 1-k; ctx.translate(cx,cy); ctx.rotate(k*5); ctx.scale(s,s); ctx.translate(-cx,-cy);
-      enemyBody(cx, cy, e, 0); ctx.restore(); return;
+      enemyBody(cx, top, e, 0); ctx.restore(); return;
     }
-    enemyBody(cx, cy, e, Math.sin(e.ph)*2);
-  }
-  const LEG_H = 12;
-  function drawLegs() {   // pixel-art, drawn into the low-res world buffer
-    const p = player; const ys = p.y - cam.y;
-    if (p.invuln > 0 && Math.floor(p.invuln*16)%2===0) return; // blink
-    const cx = p.x + p.w/2;
-    const swing = (Math.abs(p.vx)>5 && p.grounded) ? Math.sin(p.walkPh)*4 : 0;
-    ctx.fillStyle = "#5aa12e";
-    ctx.fillRect(cx-10+swing, ys+p.h-LEG_H, 7, LEG_H);
-    ctx.fillRect(cx+3-swing, ys+p.h-LEG_H, 7, LEG_H);
-    ctx.fillStyle = "#3c6e1f";   // feet
-    ctx.fillRect(cx-12+swing, ys+p.h-4, 11, 4);
-    ctx.fillRect(cx+1-swing, ys+p.h-4, 11, 4);
+    enemyBody(cx, top, e, Math.sin(e.ph)*2);
   }
   function drawBody() {   // the FULL video frame, smooth, drawn on the real canvas on top
     const p = player; const ys = p.y - cam.y;
     if (p.invuln > 0 && Math.floor(p.invuln*16)%2===0) return;
     const f = imgs[playerFrame()];
     if (!f || !f.complete || !f.naturalWidth) return;
-    const figH = p.h + 12, figW = figH * frameAR;        // whole frame shown, kept short
-    const cx = p.x + p.w/2, figTop = (ys + p.h - LEG_H + 4) - figH;
+    const figH = p.h + 10, figW = figH * frameAR;        // whole frame shown, kept short
+    const cx = p.x + p.w/2, figTop = (ys + p.h) - figH;  // bottom at feet (no separate legs)
     realCtx.save(); realCtx.imageSmoothingEnabled = true; realCtx.translate(cx, 0);
     if (p.facing < 0) realCtx.scale(-1, 1);
     realCtx.drawImage(f, -figW/2, figTop, figW, figH);
@@ -502,7 +503,6 @@
       for (const wl of walls) drawWall(wl);
       for (const gm of gems) drawGem(gm);
       for (const e of enemies) drawEnemy(e);
-      drawLegs();
       for (const q of particles){ ctx.globalAlpha=Math.max(0,q.life*1.6); ctx.fillStyle=q.color; ctx.fillRect(q.x-q.r, q.y-cam.y-q.r, q.r*2, q.r*2); }
       ctx.globalAlpha=1;
     }
