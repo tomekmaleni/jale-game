@@ -202,6 +202,11 @@
     for (const s of solids){ if (fx>=s.x && fx<=s.x+s.w && fy>=s.y && fy<=s.y+s.h) return true; }
     return false;
   }
+  function losBlocked(ax, bx, y){   // a wall between ax..bx at height y blocks the enemy's sight
+    const lo=Math.min(ax,bx), hi=Math.max(ax,bx);
+    for (const w of walls){ const wx=w.x+w.w/2; if (wx>lo && wx<hi && y>=w.y-2 && y<=w.y+w.h+2) return true; }
+    return false;
+  }
   const PLW = 32, PLH = 46;
 
   // Closed maze: solid full-width floors every ROW_H, each with ONE staggered gap to climb
@@ -243,16 +248,24 @@
       if (!segs.length) segs.push([6, W-6]);
       // thick dirt walls (jumpable) on this floor's segments
       const nW = Math.random()<0.5 ? 1 : (Math.random()<0.45 ? 2 : 0);
+      const rowWalls = [];
       for (let k=0;k<nW;k++) {
         const s = segs[(Math.random()*segs.length)|0]; if (s[1]-s[0] < 90) continue;
         const wx = clamp(s[0]+30 + Math.random()*(s[1]-s[0]-60-WALL_W), s[0]+20, s[1]-20-WALL_W);
-        walls.push({ x:wx, y:y-WALL_H, w:WALL_W, h:WALL_H });
+        const wl = { x:wx, y:y-WALL_H, w:WALL_W, h:WALL_H };
+        walls.push(wl); rowWalls.push(wl);
       }
+      const clearOfWalls = (x) => !rowWalls.some(w => x > w.x-18 && x < w.x+w.w+18);
       // enemies confined to a floor segment (bounce off walls, can chase)
       let eN = Math.random() < Math.min(0.92, 0.5 + lvl*0.06) ? (Math.random()<0.45 ? 2 : 1) : 0;
       for (let k=0;k<eN;k++) { const s = segs[(Math.random()*segs.length)|0]; enemies.push(mkEnemy(y, s[0], s[1], lvl)); }
-      // gem (required), placed on a segment
-      if (gemRows.includes(r)) { const s = segs[(Math.random()*segs.length)|0]; gems.push({ x: clamp((s[0]+s[1])/2 + (Math.random()*60-30), s[0]+12, s[1]-12), y: y-22, r:9, got:false, ph:Math.random()*6 }); }
+      // gem (required), placed on a segment but NOT inside a wall
+      if (gemRows.includes(r)) {
+        const s = segs[(Math.random()*segs.length)|0];
+        let gx2 = clamp((s[0]+s[1])/2 + (Math.random()*60-30), s[0]+12, s[1]-12);
+        for (let t=0; t<24 && !clearOfWalls(gx2); t++) gx2 = clamp(s[0]+12 + Math.random()*(s[1]-s[0]-24), s[0]+12, s[1]-12);
+        gems.push({ x: gx2, y: y-22, r:9, got:false, ph:Math.random()*6 });
+      }
     }
     gemsTotal = gems.length; gemsGot = 0;
 
@@ -387,7 +400,7 @@
       e.ph += dt*6; e.jumpCd -= dt;
       const ecx0 = e.x+e.w/2, ecy0 = e.y+e.h/2;
       // aggro: ONLY when it sees the player does it speed up, jump, and leave its platform
-      const aggro = Math.abs(pcx-ecx0) < 340 && Math.abs(pcy-ecy0) < ROW_H*1.6;
+      const aggro = Math.abs(pcx-ecx0) < 340 && Math.abs(pcy-ecy0) < ROW_H*1.6 && !losBlocked(ecx0, pcx, ecy0);
       if (aggro) e.dir = pcx < ecx0 ? -1 : 1;
       const speed = e.base * (aggro ? 2.2 : 1);
       if (aggro) {
