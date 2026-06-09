@@ -41,17 +41,6 @@
   .big-score { font-size: clamp(40px, 11vw, 96px); font-weight: 800; color: var(--teal); text-shadow: 0 0 30px rgba(0,168,204,.6); }
   .go-label { font-size: clamp(26px,6vw,48px); font-weight: 800; }
   .credit { position:absolute; bottom: 14px; font-size: 12px; opacity:.45; }
-
-  /* temporary tuner */
-  #tuner {
-    position: absolute; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 50;
-    display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center;
-    background: rgba(0,0,0,.7); padding: 10px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,.15);
-    font-size: 14px; max-width: 92vw;
-  }
-  #tuner input[type=range] { width: 320px; max-width: 60vw; }
-  #tuner button { padding: 8px 16px; border: none; border-radius: 8px; background: var(--teal); color: #fff; font-weight: 700; cursor: pointer; }
-  #fInfo { color: var(--gold); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -76,14 +65,6 @@
     <div class="sub" id="bestLine">Best: 0</div>
     <button class="btn" id="againBtn">PLAY AGAIN</button>
   </div>
-
-  <!-- TEMPORARY tuner: drag to find the smile frame, then Set -->
-  <div id="tuner">
-    <span>frame <b id="fLabel">20</b></span>
-    <input id="fSlider" type="range" min="0" max="31" value="20" step="1" />
-    <button id="fSet">Set as smile peak</button>
-    <span id="fInfo"></span>
-  </div>
 </div>
 
 <script>
@@ -105,7 +86,7 @@
 
   // ---------- Frames ----------
   // 1..21  = the loop (neutral -> grin), 22..32 = the tilt payoff (plays after a click)
-  const N = 32; let LOOP_LAST = 20; const TILT_LAST = N - 1;
+  const N = 32, LOOP_LAST = 15, TILT_LAST = N - 1;   // 1..16 loop (neutral->smile), 17..32 tilt
   const frames = [];
   for (let i = 1; i <= N; i++) { const im = new Image(); im.src = "img/jale_" + String(i).padStart(2, "0") + ".jpg"; frames.push(im); }
 
@@ -137,7 +118,6 @@
   let score, lives, combo, attempts, best;
   let result;                       // { tiltFrom, t, over }
   let flash;                        // { name, color, pts, t }
-  let previewActive = false, previewFrame = LOOP_LAST;   // temporary tuner
   best = Number(localStorage.getItem("jaleBonkBest") || 0);
 
   const BASE_PERIOD = 1.9;          // s for a full neutral->grin->neutral loop
@@ -159,7 +139,6 @@
 
   // ---------- Input (single click — catch the peak) ----------
   function tap() {
-    if (previewActive) return;
     if (state !== "playing" || phase !== "live") return;
     const p = oscProgress();
     const err = 1 - p;                       // distance from the fullest grin
@@ -193,7 +172,6 @@
 
   // ---------- Update ----------
   function update(dt) {
-    if (previewActive) return;
     clock += dt;
     if (phase === "result") {
       result.t += dt; if (flash) flash.t += dt;
@@ -214,8 +192,7 @@
   }
   function drawJale() {
     let idx;
-    if (previewActive) { idx = previewFrame; }
-    else if (phase === "result") {
+    if (phase === "result") {
       const k = Math.min(1, result.t / TILT_DUR);          // play the tilt: grin -> head-down
       idx = Math.round(result.tiltFrom + (TILT_LAST - result.tiltFrom) * k);
     } else {
@@ -289,7 +266,7 @@
   const overScreen = document.getElementById("overScreen");
   const finalScore = document.getElementById("finalScore");
   const bestLine = document.getElementById("bestLine");
-  function startGame() { previewActive = false; reset(); state = "playing"; startScreen.classList.add("hidden"); overScreen.classList.add("hidden"); audio(); }
+  function startGame() { reset(); state = "playing"; startScreen.classList.add("hidden"); overScreen.classList.add("hidden"); audio(); }
   function gameOver() {
     state = "over";
     if (score > best) { best = score; localStorage.setItem("jaleBonkBest", String(best)); }
@@ -298,21 +275,6 @@
   document.getElementById("startBtn").addEventListener("click", startGame);
   document.getElementById("againBtn").addEventListener("click", startGame);
   bestLine.textContent = "Best: " + best;
-
-  // ---------- TEMPORARY tuner ----------
-  const fSlider = document.getElementById("fSlider");
-  const fLabel = document.getElementById("fLabel");
-  const fSet = document.getElementById("fSet");
-  const fInfo = document.getElementById("fInfo");
-  fSlider.addEventListener("input", () => {
-    previewActive = true; previewFrame = +fSlider.value; fLabel.textContent = previewFrame;
-    startScreen.classList.add("hidden"); overScreen.classList.add("hidden");
-  });
-  fSet.addEventListener("click", () => {
-    LOOP_LAST = +fSlider.value;
-    previewActive = false; reset(); state = "playing"; oscStart = clock; audio();
-    fInfo.textContent = "smile peak = frame " + LOOP_LAST + " — tell Claude this number";
-  });
 })();
 </script>
 </body>
