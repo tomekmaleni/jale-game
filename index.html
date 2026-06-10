@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>Jale Goblin Climb</title>
+<title>Jale Bonk</title>
 <style>
   :root { --teal:#00A8CC; --blue:#0076BE; --navy:#003865; --gold:#ffd23f; --green:#7ed957; }
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-user-select: none; user-select: none; }
@@ -12,6 +12,10 @@
   #wrap { position: relative; width: 100vw; height: 100vh; }
   #game { display:block; width:100%; height:100%; }
   #ecanvas { display:block; max-width:92vw; touch-action:none; }
+  #shopItems button { width:100%; padding:14px 18px; font-size:17px; font-weight:700; color:#fff; cursor:pointer; border:none; border-radius:12px; background:rgba(255,255,255,.1); text-align:left; transition:transform .06s, background .1s; }
+  #shopItems button:hover { background:rgba(0,168,204,.35); }
+  #shopItems button:active { transform:scale(.97); }
+  #shopItems .sdesc { display:block; font-size:13px; font-weight:600; opacity:.7; margin-top:2px; }
 
   .overlay { position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:16px; padding:24px; background:radial-gradient(ellipse at center, rgba(0,56,101,.55), rgba(5,7,13,.94)); }
   .overlay.hidden { display:none; }
@@ -56,7 +60,7 @@
   </div>
 
   <div id="startScreen" class="overlay">
-    <div class="title">JALE <span>GOBLIN</span> CLIMB</div>
+    <div class="title">JALE <span>BONK</span></div>
     <div class="sub">
       Climb the tower to the <b>portal</b> at the top of each level. Move and jump,
       and <b>bonk</b> enemies with your head to splat them. Touch one without bonking
@@ -92,6 +96,12 @@
     <div id="bindList"></div>
     <button class="btn ghost" id="resetBinds">Reset to defaults</button>
     <button class="btn" id="closeSettings">Done</button>
+  </div>
+
+  <div id="shopScreen" class="overlay hidden">
+    <div class="title" style="font-size:42px">LEVEL <span id="shopLevel">1</span> CLEAR</div>
+    <div class="sub">Choose <b>one</b> free upgrade:</div>
+    <div id="shopItems" style="display:flex;flex-direction:column;gap:10px;width:min(440px,92vw)"></div>
   </div>
 
   <div id="overScreen" class="overlay hidden">
@@ -136,7 +146,7 @@
   function playerFrame() {
     const p = player;
     if (p.bonkT >= 0) {
-      const t = Math.min(p.bonkT / BONK_DUR, 1);
+      const t = Math.min(p.bonkT / bonkDur, 1);
       const tri = t < 0.5 ? t * 2 : (1 - t) * 2;   // 0 -> end -> 0 (smooth return, no snap)
       return Math.round(tri * (FRAMES - 1));
     }
@@ -183,6 +193,7 @@
   // ---------- Game state ----------
   let state = "start";
   let player, platforms, enemies, particles, walls, gems, shots, solids, goalPlat, levelHeight, cam, level, score, lives, best;
+  let moveSpeed, bonkR, hasGun, canPhaseDown, bonkDur;   // upgrades chosen in the shop
   let gemsTotal = 0, gemsGot = 0;
   let jumpPrev = false, bonkPrev = false;
   let idleClock = 0;
@@ -259,13 +270,20 @@
       for (let k=0;k<nW;k++) {
         const s = segs[(Math.random()*segs.length)|0]; if (s[1]-s[0] < 90) continue;
         const wx = clamp(s[0]+30 + Math.random()*(s[1]-s[0]-60-WALL_W), s[0]+20, s[1]-20-WALL_W);
-        const wl = { x:wx, y:y-WALL_H, w:WALL_W, h:WALL_H };
+        const wl = { x:wx, y:y-WALL_H, w:WALL_W, h:WALL_H, isWall:true };
         walls.push(wl); rowWalls.push(wl);
       }
       const clearOfWalls = (x) => !rowWalls.some(w => x > w.x-18 && x < w.x+w.w+18);
       // enemies confined to a floor segment (bounce off walls, can chase)
       let eN = Math.random() < Math.min(0.92, 0.5 + lvl*0.06) ? (Math.random()<0.45 ? 2 : 1) : 0;
-      for (let k=0;k<eN;k++) { const s = segs[(Math.random()*segs.length)|0]; const type = Math.random() < Math.min(0.45, 0.12 + lvl*0.05) ? "shooter" : "patrol"; enemies.push(mkEnemy(y, s[0], s[1], lvl, type)); }
+      for (let k=0;k<eN;k++) {
+        const s = segs[(Math.random()*segs.length)|0];
+        const r = Math.random();
+        const shooterChance = lvl >= 2 ? Math.min(0.42, 0.10 + lvl*0.05) : 0;   // red: levels 2+
+        const ghostChance   = lvl >= 3 ? 0.20 : 0;                              // blue: levels 3+
+        const type = r < ghostChance ? "ghost" : (r < ghostChance + shooterChance ? "shooter" : "patrol");
+        enemies.push(mkEnemy(y, s[0], s[1], lvl, type));
+      }
       // gem (required), placed on a segment but NOT inside a wall
       if (gemRows.includes(r)) {
         const s = segs[(Math.random()*segs.length)|0];
@@ -281,9 +299,9 @@
     goalPlat = { x:gx, y:gy, w:gw, h:16, isGoal:true };
     platforms.push(goalPlat);
 
-    solids = platforms.concat(walls);
+    solids = platforms.filter(pl => !pl.isGoal).concat(walls);   // goal is a pass-through portal
     player = { x: W/2-PLW/2, y: levelHeight-30-PLH, w:PLW, h:PLH, vx:0, vy:0, facing:1,
-               grounded:false, bonkT:-1, bonkCd:0, invuln:0, walkPh:0 };
+               grounded:false, bonkT:-1, bonkCd:0, invuln:0, walkPh:0, dropTimer:0 };
     cam = { y: levelHeight - H };
   }
 
@@ -305,8 +323,13 @@
     return true;
   }
 
-  function startGame() { level = 1; score = 0; lives = 3; flash = null; genLevel(level); state="playing"; hideOverlays(); }
-  function nextLevel() { level++; score += 1000; flash = { text:"LEVEL "+level, color:"#7ed957", t:0 }; genLevel(level); }
+  function startGame() {
+    level = 1; score = 0; lives = 3; flash = null;
+    moveSpeed = MOVE; bonkR = BONK_R; hasGun = false; canPhaseDown = false; bonkDur = BONK_DUR;
+    genLevel(level); state="playing"; hideOverlays();
+  }
+  function winLevel() { score += 1000; state = "shop"; openShop(); }
+  function continueLevel() { level++; flash = { text:"LEVEL "+level, color:"#7ed957", t:0 }; genLevel(level); state = "playing"; document.getElementById("shopScreen").classList.add("hidden"); }
   function gameOver() {
     state = "over";
     if (score > best) { best = score; localStorage.setItem("jaleClimbBest", String(best)); }
@@ -347,7 +370,7 @@
     let dir = 0;
     if (actionDown("left")) dir -= 1;
     if (actionDown("right")) dir += 1;
-    p.vx = dir * MOVE;
+    p.vx = dir * moveSpeed;
     if (dir) p.facing = dir;
     // jump (edge)
     const jd = actionDown("jump");
@@ -355,11 +378,18 @@
     jumpPrev = jd;
     // bonk (edge)
     const bd = actionDown("bonk");
-    if (bd && !bonkPrev && p.bonkCd <= 0) { p.bonkT = 0; p.bonkCd = BONK_CD + BONK_DUR; sndBonk(); }
+    if (bd && !bonkPrev && p.bonkCd <= 0) {
+      p.bonkT = 0; p.bonkCd = BONK_CD + bonkDur; sndBonk();
+      if (hasGun) { const np = bonkPoint(); shots.push({ x: np.x, y: np.y, vx: p.facing*340, vy:0, r:6, friendly:true }); }
+    }
     bonkPrev = bd;
-    if (p.bonkT >= 0) { p.bonkT += dt; if (p.bonkT >= BONK_DUR) p.bonkT = -1; }
+    if (p.bonkT >= 0) { p.bonkT += dt; if (p.bonkT >= bonkDur) p.bonkT = -1; }
     if (p.bonkCd > 0) p.bonkCd -= dt;
     if (p.invuln > 0) p.invuln -= dt;
+    // drop through a platform (Down) — phases briefly, like the blue enemy
+    const downHeld = pressed.has("ArrowDown") || pressed.has("KeyS");
+    if (canPhaseDown && downHeld && p.grounded && p.dropTimer <= 0) { p.dropTimer = 0.22; p.grounded = false; if (p.vy < 80) p.vy = 80; }
+    if (p.dropTimer > 0) p.dropTimer -= dt;
 
     // gravity + integrate
     p.vy += GRAV * dt;
@@ -376,7 +406,7 @@
     const prevTop = p.y, prevBot = p.y + p.h;
     p.y += p.vy * dt;
     p.grounded = false;
-    for (const s of solids) {
+    if (p.dropTimer <= 0) for (const s of solids) {   // while dropping, phase through
       if (!(p.x + p.w > s.x + 2 && p.x < s.x + s.w - 2)) continue;
       if (p.vy >= 0 && prevBot <= s.y && p.y + p.h >= s.y) {            // land on top
         p.y = s.y - p.h; p.vy = 0; p.grounded = true;
@@ -394,10 +424,10 @@
       }
     }
     if (Math.abs(p.vx) > 5 && p.grounded) p.walkPh += dt * 12;
-    // reach the exit portal by TOUCHING it (needs all gems)
-    { const gp = goalPlat;
-      if (p.x < gp.x+gp.w && p.x+p.w > gp.x && p.y+p.h > gp.y-46 && p.y < gp.y+gp.h) {
-        if (gemsGot >= gemsTotal) { sndWin(); nextLevel(); return; }
+    // reach the exit portal by TOUCHING it from any side (needs all gems)
+    { const gp = goalPlat, m = 16;
+      if (p.x+p.w > gp.x-m && p.x < gp.x+gp.w+m && p.y+p.h > gp.y-48 && p.y < gp.y+gp.h+m) {
+        if (gemsGot >= gemsTotal) { sndWin(); winLevel(); return; }
         else flash = { text:"COLLECT ALL GEMS", color:"#ffd23f", t:0, small:true };
       }
     }
@@ -425,6 +455,17 @@
             sndShoot(); e.shootCd = shootInterval(level);
           }
         } else { e.vx = 0; e.shootCd = Math.min(e.shootCd, 0.12); }   // ready to fire on first sight
+      } else if (e.type === "ghost") {
+        // blue: phases through walls, sees through them too, but is slow
+        const seesG = Math.abs(pcy - ecy0) < ROW_H*1.6;
+        if (seesG) {
+          e.dir = pcx < ecx0 ? -1 : 1;
+          if (e.grounded && (e.jumpCd <= 0 || pcy < ecy0 - 24)) { e.vy = -560; e.grounded = false; e.jumpCd = 0.9 + Math.random()*1.2; }
+          e.vx = e.dir * e.base * 1.05;
+        } else {
+          if (e.grounded && !groundAhead(e)) e.dir = -e.dir;
+          e.vx = e.dir * e.base * 0.6;
+        }
       } else {
         // green: ONLY when it sees the player does it speed up, jump, and leave its platform
         const aggro = sees;
@@ -439,6 +480,7 @@
       if (e.x < 2) { e.x = 2; e.dir = 1; }
       if (e.x > W-2-e.w) { e.x = W-2-e.w; e.dir = -1; }
       for (const s of solids) {
+        if (e.type === "ghost" && s.isWall) continue;   // blue phases through walls
         if (e.x < s.x+s.w && e.x+e.w > s.x && e.y+3 < s.y+s.h && e.y+e.h-3 > s.y) {
           if (e.vx > 0) e.x = s.x - e.w; else e.x = s.x + s.w;
           if (e.type === "shooter") e.vx = 0; else e.dir = (e.vx > 0) ? -1 : 1;
@@ -447,6 +489,7 @@
       // vertical (swept) — land on floors, fall through gaps
       const epT = e.y, epB = e.y+e.h; e.y += e.vy * dt; e.grounded = false;
       for (const s of solids) {
+        if (e.type === "ghost" && s.isWall) continue;   // blue phases through walls
         if (!(e.x+e.w > s.x+2 && e.x < s.x+s.w-2)) continue;
         if (e.vy >= 0 && epB <= s.y && e.y+e.h >= s.y) { e.y = s.y-e.h; e.vy = 0; e.grounded = true; }
         else if (e.vy < 0 && epT >= s.y+s.h && e.y <= s.y+s.h) { e.y = s.y+s.h; e.vy = 0; }
@@ -454,20 +497,32 @@
       if (e.y+e.h >= levelHeight) { e.y = levelHeight-e.h; e.vy = 0; e.grounded = true; }
       // bonk kill / touch damage
       const ecx = e.x+e.w/2, ecy = e.y+e.h/2;
-      if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < BONK_R + e.w/2) {
+      if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < bonkR + e.w/2) {
         e.alive = false; e.dying = 0; score += 150; splat(ecx, ecy, "#7ed957"); sndKill();
         flash = { text: "+150", color:"#7ed957", t:0, small:true }; continue;
       }
       if (p.invuln <= 0 && p.x < e.x+e.w && p.x+p.w > e.x && p.y < e.y+e.h && p.y+p.h > e.y) hurt(ecx);
     }
-    // projectiles (red cyclops shots): fly straight, blocked by walls/floors, hurt the player
+    // projectiles: fly straight, blocked by walls/floors. Enemy shots hurt you; your shots kill enemies.
     for (let i=shots.length-1;i>=0;i--){
       const s = shots[i]; s.x += s.vx * dt; s.y += (s.vy || 0) * dt;
-      if (s.x < -20 || s.x > W+20 || s.y < cam.y-40 || s.y > cam.y+H+40) { shots.splice(i,1); continue; }
+      const col = s.friendly ? "#9fe8ff" : "#ff5a5a";
+      if (s.x < -20 || s.x > W+20 || s.y < cam.y-60 || s.y > cam.y+H+60) { shots.splice(i,1); continue; }
       let blocked = false;
       for (const so of solids) { if (s.x > so.x && s.x < so.x+so.w && s.y > so.y && s.y < so.y+so.h) { blocked = true; break; } }
-      if (blocked) { splat(s.x, s.y, "#ff5a5a"); shots.splice(i,1); continue; }
-      if (p.invuln <= 0 && s.x > p.x && s.x < p.x+p.w && s.y > p.y && s.y < p.y+p.h) { hurt(s.x); splat(s.x, s.y, "#ff5a5a"); shots.splice(i,1); }
+      if (blocked) { splat(s.x, s.y, col); shots.splice(i,1); continue; }
+      if (s.friendly) {
+        let hit = false;
+        for (const e of enemies) {
+          if (e.alive && s.x > e.x && s.x < e.x+e.w && s.y > e.y && s.y < e.y+e.h) {
+            e.alive = false; e.dying = 0; score += 150; splat(e.x+e.w/2, e.y+e.h/2, "#9fe8ff"); sndKill();
+            flash = { text:"+150", color:"#9fe8ff", t:0, small:true }; hit = true; break;
+          }
+        }
+        if (hit) { shots.splice(i,1); }
+      } else if (p.invuln <= 0 && s.x > p.x && s.x < p.x+p.w && s.y > p.y && s.y < p.y+p.h) {
+        hurt(s.x); splat(s.x, s.y, col); shots.splice(i,1);
+      }
     }
     // particles
     for (let i=particles.length-1;i>=0;i--){ const q=particles[i]; q.life-=dt; q.x+=q.vx*dt; q.y+=q.vy*dt; q.vy+=900*dt; if(q.life<=0) particles.splice(i,1); }
@@ -514,8 +569,9 @@
     const legH = 12, bodyH = e.h - legH, by = top + bob;
     const ex = e.dir || Math.sign(e.vx) || 1;
     const walk = Math.sin(e.ph) * 3;
-    const shooter = e.type === "shooter";
-    const body = shooter ? "#c0392b" : "#5aa12e", dark = shooter ? "#7d241a" : "#3c6e1f";
+    const shooter = e.type === "shooter", ghost = e.type === "ghost";
+    const body = shooter ? "#c0392b" : ghost ? "#3a86ff" : "#5aa12e";
+    const dark = shooter ? "#7d241a" : ghost ? "#1f4fa6" : "#3c6e1f";
     // legs
     ctx.fillStyle = dark;
     ctx.fillRect(cx-9+walk, by+bodyH-2, 7, legH);
@@ -531,10 +587,12 @@
       else { ctx.fillStyle="#b1121b"; ctx.beginPath(); ctx.arc(cx+ex*5, cyB-2, 4.6,0,Math.PI*2); ctx.fill(); }
       ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6, cyB-2, 2,0,Math.PI*2); ctx.fill();
     } else {
-      // ears
-      ctx.fillStyle=body;
-      ctx.beginPath(); ctx.moveTo(cx-e.w/2, cyB-6); ctx.lineTo(cx-e.w/2-8, cyB-16); ctx.lineTo(cx-e.w/2+2, cyB-4); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(cx+e.w/2, cyB-6); ctx.lineTo(cx+e.w/2+8, cyB-16); ctx.lineTo(cx+e.w/2-2, cyB-4); ctx.fill();
+      // ears (green only)
+      if (!ghost) {
+        ctx.fillStyle=body;
+        ctx.beginPath(); ctx.moveTo(cx-e.w/2, cyB-6); ctx.lineTo(cx-e.w/2-8, cyB-16); ctx.lineTo(cx-e.w/2+2, cyB-4); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(cx+e.w/2, cyB-6); ctx.lineTo(cx+e.w/2+8, cyB-16); ctx.lineTo(cx+e.w/2-2, cyB-4); ctx.fill();
+      }
       // two eyes (look toward movement)
       ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx+ex*4-5, cyB-3, 4,0,Math.PI*2); ctx.arc(cx+ex*4+5, cyB-3,4,0,Math.PI*2); ctx.fill();
       ctx.fillStyle="#111"; ctx.beginPath(); ctx.arc(cx+ex*6-5, cyB-3,2,0,Math.PI*2); ctx.arc(cx+ex*6+5, cyB-3,2,0,Math.PI*2); ctx.fill();
@@ -542,9 +600,10 @@
   }
   function drawShot(s) {
     const y = s.y - cam.y; if (y < -20 || y > H+20) return;
-    ctx.save(); ctx.shadowColor = "#ff4040"; ctx.shadowBlur = 10;
+    const mid = s.friendly ? "#7fdfff" : "#ff5a5a", glow = s.friendly ? "#40c4ff" : "#ff4040", edge = s.friendly ? "rgba(60,180,255,0)" : "rgba(255,40,40,0)";
+    ctx.save(); ctx.shadowColor = glow; ctx.shadowBlur = 10;
     const g = ctx.createRadialGradient(s.x, y, 1, s.x, y, s.r);
-    g.addColorStop(0, "#fff"); g.addColorStop(0.4, "#ff5a5a"); g.addColorStop(1, "rgba(255,40,40,0)");
+    g.addColorStop(0, "#fff"); g.addColorStop(0.4, mid); g.addColorStop(1, edge);
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI*2); ctx.fill(); ctx.restore();
   }
   function drawEnemy(e) {
@@ -556,7 +615,8 @@
       ctx.save(); ctx.globalAlpha = 1-k; ctx.translate(cx,cy); ctx.rotate(k*5); ctx.scale(s,s); ctx.translate(-cx,-cy);
       enemyBody(cx, top, e, 0); ctx.restore(); return;
     }
-    enemyBody(cx, top, e, Math.sin(e.ph)*2);
+    if (e.type === "ghost") { ctx.save(); ctx.globalAlpha = 0.78; enemyBody(cx, top, e, Math.sin(e.ph)*2); ctx.restore(); }
+    else enemyBody(cx, top, e, Math.sin(e.ph)*2);
   }
   const HEAD_FRAC = 0.37;   // where his head sits within the (tall) video frame
   function drawBody() {   // the video frame, smooth, drawn on the real canvas on top
@@ -573,6 +633,7 @@
     const cut = (typeof window.JCUT === "number") ? window.JCUT : BAKED_CUT;   // right cut fraction
     const poly = (window.JOUT && window.JOUT[playerFrame()]) || BAKED_OUT[playerFrame()];  // traced outline
     realCtx.save();
+    if (p.dropTimer > 0) realCtx.globalAlpha = 0.5;   // phasing through a platform
     realCtx.beginPath(); realCtx.rect(0, 0, W, feet); realCtx.clip();   // cut the lower body at the feet
     realCtx.imageSmoothingEnabled = true; realCtx.translate(cx, 0);
     if (p.facing < 0) realCtx.scale(-1, 1);
@@ -591,12 +652,12 @@
     const dir = p.facing;
     const noseX = p.x + p.w/2 + dir * (p.w/2 + 2);
     const noseY = (p.y + p.h - 30) - cam.y;                 // at his head/nose height
-    const reachLen = 14 + BONK_R;                           // full effective reach
+    const reachLen = 14 + bonkR;                            // full effective reach
     const t = Math.min(p.bonkT / BONK_DUR, 1);
     const ext = Math.min(t / 0.45, 1);                      // extends outward over the first ~45%
     const fade = t > 0.7 ? Math.max(0, 1 - (t - 0.7) / 0.3) : 1;
     const tipX = noseX + dir * reachLen * ext;
-    const hw = BONK_R * 0.55 * ext;                         // widens the further it travels
+    const hw = bonkR * 0.55 * ext;                          // widens the further it travels
     realCtx.save();
     realCtx.globalAlpha = fade;
     realCtx.shadowColor = "#9fe8ff"; realCtx.shadowBlur = 16;
@@ -617,7 +678,7 @@
     ctx.fillStyle="#fff"; ctx.font="700 32px 'Trebuchet MS',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="top";
     ctx.shadowColor="rgba(0,0,0,.6)"; ctx.shadowBlur=6; ctx.fillText(String(score),22,16); ctx.shadowBlur=0;
     ctx.font="600 16px 'Trebuchet MS',sans-serif"; ctx.fillStyle="rgba(255,255,255,.7)"; ctx.fillText("LEVEL "+level,24,52);
-    ctx.textAlign="right"; ctx.font="24px sans-serif"; let s=""; for(let i=0;i<3;i++) s+= i<lives?"❤ ":"🖤 "; ctx.fillText(s.trim(), W-20, 18);
+    ctx.textAlign="right"; ctx.font="22px sans-serif"; ctx.fillStyle="#fff"; ctx.fillText("❤ " + lives, W-20, 20);
     // climb progress bar (right edge)
     const prog = clamp(1 - (player.y - 120) / (levelHeight - 120), 0, 1);
     ctx.fillStyle="rgba(255,255,255,.12)"; roundRect(W-16, 70, 8, H-150, 4); ctx.fill();
@@ -648,7 +709,7 @@
     lctx.setTransform(1/PIXEL, 0, 0, 1/PIXEL, 0, 0);
     lctx.imageSmoothingEnabled = false;
     drawBg();
-    if (state === "playing" || state === "over") {
+    if (state === "playing" || state === "over" || state === "shop") {
       for (const pl of platforms) drawPlatform(pl);
       for (const wl of walls) drawWall(wl);
       for (const gm of gems) drawGem(gm);
@@ -664,7 +725,7 @@
     realCtx.drawImage(lbuf, 0, 0, lbuf.width, lbuf.height, 0, 0, W, H);
     realCtx.imageSmoothingEnabled = true;
     // ----- the video (smooth) + HUD on top -----
-    if (state === "playing" || state === "over") { drawBody(); if (state === "playing") drawBeam(); drawHUD(); }
+    if (state === "playing" || state === "over" || state === "shop") { drawBody(); if (state === "playing") drawBeam(); if (state !== "shop") drawHUD(); }
   }
   function roundRect(x,y,w,h,r){ r=Math.min(r,w/2,h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
@@ -675,7 +736,28 @@
 
   // ---------- Screens / UI ----------
   const startScreen=document.getElementById("startScreen"), settingsScreen=document.getElementById("settingsScreen"), overScreen=document.getElementById("overScreen");
-  function hideOverlays(){ startScreen.classList.add("hidden"); settingsScreen.classList.add("hidden"); overScreen.classList.add("hidden"); }
+  function hideOverlays(){ startScreen.classList.add("hidden"); settingsScreen.classList.add("hidden"); overScreen.classList.add("hidden"); document.getElementById("shopScreen").classList.add("hidden"); }
+  // ---------- upgrade shop (free, choose one) ----------
+  const shopScreen = document.getElementById("shopScreen"), shopItems = document.getElementById("shopItems");
+  function openShop() {
+    document.getElementById("shopLevel").textContent = level;
+    const opts = [
+      { name:"❤  Extra heart", desc:"Gain one more heart", apply:()=>{ lives++; } },
+      { name:"🏃  More speed", desc:"Run noticeably faster", apply:()=>{ moveSpeed += 55; } },
+      { name:"🌀  More bonk range", desc:"Wider, longer nose cone", apply:()=>{ bonkR += 11; } },
+      { name:"⚡  Faster attacks", desc:"Bonk more quickly", apply:()=>{ bonkDur = Math.max(0.3, bonkDur*0.78); } },
+    ];
+    if (level >= 2 && !hasGun) opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ hasGun = true; } });
+    if (level >= 3 && !canPhaseDown) opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ canPhaseDown = true; } });
+    shopItems.innerHTML = "";
+    for (const o of opts) {
+      const b = document.createElement("button");
+      b.innerHTML = o.name + "<span class='sdesc'>" + o.desc + "</span>";
+      b.addEventListener("click", () => { audio(); o.apply(); continueLevel(); });
+      shopItems.appendChild(b);
+    }
+    shopScreen.classList.remove("hidden");
+  }
   document.getElementById("startBtn").addEventListener("click", ()=>{ audio(); startGame(); });
   document.getElementById("againBtn").addEventListener("click", ()=>{ audio(); startGame(); });
   document.getElementById("settingsBtn").addEventListener("click", ()=>{ startScreen.classList.add("hidden"); settingsScreen.classList.remove("hidden"); renderBinds(); });
@@ -764,6 +846,7 @@
   if (location.hash.startsWith("#test")) setTimeout(()=>{ startGame();
     if (location.hash==="#test-bonk") { player.bonkT = BONK_DUR*0.3; window.__FREEZE = true; }
     else if (location.hash==="#test-shoot") { const fy=levelHeight-30; const e=mkEnemy(fy, W/2+120, W-40, level, "shooter"); e.x=W/2+170; e.dir=-1; e.aiming=true; enemies.push(e); shots.push({x:W/2+110, y:player.y+player.h/2, vx:-SHOT_SPEED, r:7}); window.__FREEZE=true; }
+    else if (location.hash==="#test-shop") { level=3; winLevel(); }
     if (location.hash==="#test-touch") touchEl.classList.remove("hidden");
   }, 700);
 })();
