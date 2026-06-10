@@ -439,7 +439,7 @@
     // horizontal move + solid collision (walls AND floors are solid — no passing through)
     p.x += p.vx * dt;
     p.x = clamp(p.x, 0, W - p.w);
-    for (const s of solids) {
+    if (p.dropTimer <= 0) for (const s of solids) {   // while dropping, phase through
       if (p.x < s.x+s.w && p.x+p.w > s.x && p.y+2 < s.y+s.h && p.y+p.h-2 > s.y) {
         if (p.vx > 0) p.x = s.x - p.w; else if (p.vx < 0) p.x = s.x + s.w; p.vx = 0;
       }
