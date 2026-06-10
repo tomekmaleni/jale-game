@@ -155,7 +155,7 @@
   }
 
   // ---------- Controls (remappable) ----------
-  const DEFAULTS = { left:"ArrowLeft", right:"ArrowRight", jump:"Space", bonk:"ControlRight" };
+  const DEFAULTS = { left:"ArrowLeft", right:"ArrowRight", jump:"Space", bonk:"ControlRight", down:"ArrowDown" };
   let keymap = Object.assign({}, DEFAULTS);
   try { const s = JSON.parse(localStorage.getItem("jaleKeys")||"null"); if (s) keymap = Object.assign({}, DEFAULTS, s); } catch(e){}
   const saveKeys = () => localStorage.setItem("jaleKeys", JSON.stringify(keymap));
@@ -170,6 +170,7 @@
     if (a==="right" && (pressed.has("ArrowRight")||pressed.has("KeyD"))) return true;
     if (a==="jump"  && (pressed.has("ArrowUp")||pressed.has("Space")||pressed.has("KeyW"))) return true;
     if (a==="bonk"  && pressed.has("KeyJ")) return true;
+    if (a==="down"  && (pressed.has("ArrowDown")||pressed.has("KeyS"))) return true;
     return false;
   }
   function keyLabel(code) {
@@ -387,7 +388,7 @@
     if (p.bonkCd > 0) p.bonkCd -= dt;
     if (p.invuln > 0) p.invuln -= dt;
     // drop through a platform (Down) — phases briefly, like the blue enemy
-    const downHeld = pressed.has("ArrowDown") || pressed.has("KeyS");
+    const downHeld = actionDown("down");
     if (canPhaseDown && downHeld && p.grounded && p.dropTimer <= 0) { p.dropTimer = 0.22; p.grounded = false; if (p.vy < 80) p.vy = 80; }
     if (p.dropTimer > 0) p.dropTimer -= dt;
 
@@ -766,7 +767,7 @@
 
   const bindList=document.getElementById("bindList");
   function renderBinds(){
-    const acts=[["left","Move left"],["right","Move right"],["jump","Jump"],["bonk","Bonk"]];
+    const acts=[["left","Move left"],["right","Move right"],["jump","Jump"],["bonk","Bonk"],["down","Drop through"]];
     bindList.innerHTML="";
     for(const [a,label] of acts){
       const row=document.createElement("div"); row.className="bindRow";
