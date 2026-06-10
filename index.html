@@ -349,13 +349,13 @@
     const gy = levelHeight - 30;                             // ground top
     platforms = []; enemies = []; particles = []; walls = []; gems = []; shots = [];
     platforms.push({ x:0, y:gy, w:W, h:30, floor:true });    // ground
-    // ledges to climb and dodge around the boss
+    // ledges to climb and dodge around the boss (steps ~120px apart; jump reaches ~170px)
     const ledges = [
-      { x:40,      y:gy-165, w:220, h:FH },   // low left
-      { x:W-260,   y:gy-165, w:220, h:FH },   // low right
-      { x:150,     y:gy-320, w:190, h:FH },   // mid left
-      { x:W-340,   y:gy-320, w:190, h:FH },   // mid right
-      { x:W/2-100, y:gy-330, w:200, h:FH },   // center perch (reach the eye)
+      { x:40,      y:gy-120, w:230, h:FH },   // low left
+      { x:W-270,   y:gy-120, w:230, h:FH },   // low right
+      { x:170,     y:gy-240, w:200, h:FH },   // mid left
+      { x:W-370,   y:gy-240, w:200, h:FH },   // mid right
+      { x:W/2-105, y:gy-310, w:210, h:FH },   // center perch (bonk the eye from here)
     ];
     for (const pl of ledges) platforms.push(pl);
     bossLedges = ledges.slice(0, 4);                         // minions spawn on the side ledges
