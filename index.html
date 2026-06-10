@@ -231,7 +231,7 @@
   const SHOT_SPEED = 250;                                  // red cyclops projectile speed
   const shootInterval = (lvl) => Math.max(0.4, 1.25 - lvl*0.12);   // fires faster each level
   const PIXEL = 3;                  // pixel-art downscale factor for the world (not the video)
-  const BOSS_LEVEL = 1;             // TEMP TEST: boss on level 1 (normally 4)
+  const BOSS_LEVEL = 4;             // level 4 is the final boss arena instead of a maze
 
   // low-res buffer for the pixel-art world (the video is drawn smooth, separately)
   const lbuf = document.createElement("canvas"); lbuf.width = Math.ceil(W/PIXEL); lbuf.height = Math.ceil(H/PIXEL);
