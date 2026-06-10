@@ -366,7 +366,7 @@
     const cy = 320;                                          // eye floats here, centered
     boss = { cx:W/2, baseY:cy, cy:cy, w:152, h:122, eyeR:24, hp:16, maxHp:16,
              mode:"idle", cd:1.6, seq:0, atkT:0, t:0, bobT:0, tentPhase:0,
-             hitFlash:0, invuln:0, laser:null, spawned:false, beamLen:1200, tentReach:172 };
+             hitFlash:0, invuln:0, laser:null, spawned:false, beamLen:1200, tentReach:200 };
     cam = { y: levelHeight - H };
   }
   function bossHit(n) {
@@ -383,7 +383,7 @@
     enemies.push(e); splat(e.x+e.w/2, e.y+e.h/2, "#ffcaca");
   }
   function startBossAttack() {
-    const kinds = ["laser","tent","spawn"];
+    const kinds = ["tent","laser","tent","spawn","tent"];   // tentacles come up most often
     boss.mode = kinds[boss.seq % kinds.length]; boss.seq++;
     boss.atkT = 0; boss.spawned = false;
     if (boss.mode === "laser") boss.laser = { phase:"charge", t:0,
@@ -392,7 +392,7 @@
   function endBossAttack() { boss.mode = "idle"; boss.laser = null; boss.cd = Math.max(0.5, 1.3 - boss.seq*0.04); }
   function updateBoss(dt, p, pcx, pcy, bp) {
     const b = boss;
-    b.t += dt; b.bobT += dt; b.tentPhase += dt*2;
+    b.t += dt; b.bobT += dt; b.tentPhase += dt*3.6;
     b.cy = b.baseY + Math.sin(b.bobT*1.3)*16;                // float/bob in place
     if (b.hitFlash > 0) b.hitFlash -= dt;
     if (b.invuln > 0)  b.invuln  -= dt;
@@ -419,11 +419,11 @@
       }
     } else if (b.mode === "tent") {
       b.atkT += dt;
-      if (b.atkT > 0.55 && b.atkT < 1.45) {                  // tentacles sweep a ring around the boss
+      if (b.atkT > 0.3 && b.atkT < 1.7) {                    // tentacles lash a ring around the boss (twice)
         const d = Math.hypot(pcx-ex, pcy-ey);
-        if (p.invuln <= 0 && d > 58 && d < b.tentReach) hurt(ex);
+        if (p.invuln <= 0 && d > 54 && d < b.tentReach) hurt(ex);
       }
-      if (b.atkT >= 1.55) endBossAttack();
+      if (b.atkT >= 1.8) endBossAttack();
     } else if (b.mode === "spawn") {
       b.atkT += dt;
       if (!b.spawned && b.atkT > 0.5) { b.spawned = true;
@@ -853,19 +853,19 @@
     const px = player.x+player.w/2, py = player.y+player.h/2;
     const charging = b.mode==="laser" && b.laser && b.laser.phase==="charge";
     const firing   = b.mode==="laser" && b.laser && b.laser.phase==="fire";
-    // tentacle extension: 0..1..0 across a tentacle sweep
-    let tentEx = 0.15 + 0.1*Math.sin(b.tentPhase);
-    if (b.mode==="tent") tentEx = 0.2 + 0.95*Math.sin(clamp((b.atkT-0.2)/1.2,0,1)*Math.PI);
-    const baseY = cy + b.h*0.26, nT = 7;
+    // tentacle extension: restless when idle, two big lashes during a sweep
+    let tentEx = 0.25 + 0.2*Math.sin(b.tentPhase);
+    if (b.mode==="tent") tentEx = 0.3 + 0.75*Math.abs(Math.sin(clamp((b.atkT-0.1)/1.6,0,1)*Math.PI*2));
+    const baseY = cy + b.h*0.26, nT = 9;
     ctx.fillStyle = b.hitFlash>0 ? "#e98a86" : "#9b1c1c";
     for (let i=0;i<nT;i++) {
       const spread = (i/(nT-1)-0.5)*2;                       // -1..1
-      const len = 50 + tentEx*95 + (i%2)*8, segs = 8;
+      const len = 52 + tentEx*120 + (i%2)*10, segs = 9;
       for (let j=1;j<=segs;j++) {
         const tt = j/segs, along = len*tt;
-        const x = cx + spread*b.w*0.30 + Math.sin(along*0.06 + spread) * along*0.18
-                  + Math.sin(b.tentPhase*2 + i*1.3 + tt*5) * (10*tt) * (0.5+tentEx);
-        const y = baseY + along;
+        const x = cx + spread*b.w*0.30 + Math.sin(along*0.06 + spread) * along*0.22
+                  + Math.sin(b.tentPhase*2.6 + i*1.3 + tt*6) * (18*tt) * (0.6 + tentEx*1.5);
+        const y = baseY + along + Math.sin(b.tentPhase*3 + i) * (5*tt) * (0.4+tentEx);
         const r = 9*(1-tt) + 2.5;
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
       }
