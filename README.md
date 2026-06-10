@@ -14,6 +14,23 @@ https://tomekmaleni.github.io/jale-game/ — or open `index.html`.
 - **Desktop:** ◀ ▶ move · **Space** jump · **Right Ctrl** bonk (remappable in *Controls*; WASD/J also work)
 - **Mobile:** on-screen D-pad (left) + BONK button (right)
 
+## Levels & progression
+
+Four levels. 1–3 are procedurally generated mazes that get taller and busier; **level 4 is the final boss** — a floating one-eyed tentacled kraken with tentacle, laser, and minion-spawn attacks.
+
+Enemies (each worth different points on a bonk kill):
+
+- **Patrol** — walks its floor segment; the basic enemy, all levels.
+- **Red cyclops (shooter)** — turret that fires aimed shots on sight. Appears on **levels 3+**.
+- **Blue ghost** — wakes when you come near, then flies through walls to chase. Appears on **levels 2+**.
+
+After each cleared level you pick **one** free upgrade in the shop. Always available: more speed, more bonk range, faster attacks (and heart restore if hurt). Conditional:
+
+- **Drop-through** (press Down to fall through a platform) — offered after clearing **levels 2 and 3**.
+- **Projectile weapon** (bonking also fires a shot) — offered after clearing **level 3**.
+
+Upgrades and the enemy/ability collection persist between games (localStorage).
+
 ## How it's made
 
 - `img/jale_01..32.jpg` — frames from `assets/WhatsApp Video 2026-06-05 at 22.36.47.mp4`.

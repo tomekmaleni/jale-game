@@ -309,8 +309,8 @@
       for (let k=0;k<eN;k++) {
         const s = segs[(Math.random()*segs.length)|0];
         const r = Math.random();
-        const shooterChance = (lvl >= 2 || save.enemies.shooter) ? Math.min(0.42, 0.10 + lvl*0.05) : 0;   // red: lv2+ (or once unlocked)
-        const ghostChance   = (lvl >= 3 || save.enemies.ghost)   ? 0.20 : 0;                               // blue: lv3+ (or once unlocked)
+        const shooterChance = (lvl >= 3) ? Math.min(0.42, 0.10 + lvl*0.05) : 0;   // red: lv3+ only
+        const ghostChance   = (lvl >= 2) ? 0.20 : 0;                              // blue: lv2+ only
         const type = r < ghostChance ? "ghost" : (r < ghostChance + shooterChance ? "shooter" : "patrol");
         if (type === "shooter" && !save.enemies.shooter) { save.enemies.shooter = true; persistSave(); }
         if (type === "ghost"   && !save.enemies.ghost)   { save.enemies.ghost = true; persistSave(); }
@@ -1045,8 +1045,8 @@
       { name:"⚡  Faster attacks", desc:"Bonk more quickly", apply:()=>{ save.atk++; applyUpgrades(); persistSave(); } },
     ];
     if (lives < 3) opts.unshift({ name:"❤  Restore a heart", desc:"Heal one heart (max 3)", apply:()=>{ lives = Math.min(3, lives+1); } });
-    if (save.enemies.shooter && !save.gun) { opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ save.gun=true; applyUpgrades(); persistSave(); } }); if (!save.seenGun) { save.seenGun=true; persistSave(); } }
-    if (save.enemies.ghost && !save.phase) { opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ save.phase=true; applyUpgrades(); persistSave(); } }); if (!save.seenPhase) { save.seenPhase=true; persistSave(); } }
+    if (level === 3 && !save.gun) { opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ save.gun=true; applyUpgrades(); persistSave(); } }); if (!save.seenGun) { save.seenGun=true; persistSave(); } }
+    if ((level === 2 || level === 3) && !save.phase) { opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ save.phase=true; applyUpgrades(); persistSave(); } }); if (!save.seenPhase) { save.seenPhase=true; persistSave(); } }
     shopItems.innerHTML = "";
     for (const o of opts) {
       const b = document.createElement("button");
