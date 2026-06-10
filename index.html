@@ -16,6 +16,17 @@
   #shopItems button:hover { background:rgba(0,168,204,.35); }
   #shopItems button:active { transform:scale(.97); }
   #shopItems .sdesc { display:block; font-size:13px; font-weight:600; opacity:.7; margin-top:2px; }
+  #infoContent { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+  .ic-section { width:100%; text-align:center; font-weight:800; color:#9fd; margin:4px 0 2px; letter-spacing:1px; }
+  .icard { width:134px; min-height:132px; background:rgba(255,255,255,.1); border-radius:14px; padding:12px 8px;
+           display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; text-align:center; }
+  .icard .ic-emoji { font-size:30px; line-height:1; }
+  .icard .ic-name { font-weight:800; font-size:14px; }
+  .icard .ic-val { font-size:12px; opacity:.8; }
+  .icard .ic-desc { font-size:10.5px; opacity:.65; line-height:1.3; }
+  .icard canvas { width:62px; height:auto; image-rendering:pixelated; }
+  .icard.locked { color:#7a8294; }
+  .icard.locked .ic-emoji { font-size:36px; }
 
   .overlay { position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:16px; padding:24px; background:radial-gradient(ellipse at center, rgba(0,56,101,.55), rgba(5,7,13,.94)); }
   .overlay.hidden { display:none; }
@@ -101,7 +112,7 @@
 
   <div id="infoScreen" class="overlay hidden" style="overflow:auto; justify-content:flex-start; gap:10px; padding:22px 16px;">
     <div class="title" style="font-size:40px">COLLECTION</div>
-    <div id="infoContent" style="display:flex; flex-direction:column; gap:8px; width:min(560px,94vw); text-align:left; font-size:15px"></div>
+    <div id="infoContent" style="width:min(620px,94vw)"></div>
     <button class="btn" id="infoClose">Back</button>
   </div>
 
@@ -568,7 +579,7 @@
     ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
     // parallax light streaks
     ctx.save(); ctx.globalAlpha=0.15; ctx.strokeStyle="#5BC2E7"; ctx.lineWidth=2;
-    const off = (-cam.y*0.3) % 120;
+    const off = (-((cam && cam.y) || 0)*0.3) % 120;
     for (let yy=off% 120; yy<H; yy+=120){ ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(W,yy-30); ctx.stroke(); }
     ctx.restore();
   }
@@ -761,7 +772,7 @@
 
   // ---------- Loop ----------
   let last=0;
-  function frame(ts){ const dt=last?Math.min(0.045,(ts-last)/1000):0; last=ts; try{ if(state==="playing") update(dt); render(); }catch(e){ console.error(e); } requestAnimationFrame(frame); }
+  function frame(ts){ const dt=last?Math.min(0.045,(ts-last)/1000):0; last=ts; try{ if(state==="playing") update(dt); render(); animateInfoIcons(dt); }catch(e){ console.error(e); } requestAnimationFrame(frame); }
   requestAnimationFrame(frame);
 
   // ---------- Screens / UI ----------
@@ -769,24 +780,52 @@
   function hideOverlays(){ startScreen.classList.add("hidden"); settingsScreen.classList.add("hidden"); overScreen.classList.add("hidden"); document.getElementById("shopScreen").classList.add("hidden"); document.getElementById("infoScreen").classList.add("hidden"); }
   // ---------- Collection (abilities + enemies; ??? until unlocked/seen) ----------
   const infoScreen = document.getElementById("infoScreen"), infoContent = document.getElementById("infoContent");
+  let infoIcons = [];
   function renderInfo() {
-    const row = (label, val, col) => `<div><b style="color:${col||'#cfe'}">${label}</b> — <span style="opacity:.85">${val}</span></div>`;
-    let h = "<div style='font-weight:800;color:#7ed957;margin-bottom:2px'>ABILITIES (kept between games)</div>";
-    h += row("🏃 Speed", "Lv " + save.speed + (save.speed?` (+${save.speed*55} move)`:""));
-    h += row("🌀 Bonk range", "Lv " + save.range);
-    h += row("⚡ Attack speed", "Lv " + save.atk);
-    h += row("❤ Bonus hearts", "+" + save.hearts + " (start with " + (3+save.hearts) + ")");
-    h += row("🔫 Projectile weapon", save.gun ? "OWNED — bonking also fires a forward shot" : save.seenGun ? "Bonking also fires a forward shot (buy in shop)" : "???");
-    h += row("⬇️ Drop-through", save.phase ? "OWNED — press Down to fall through a platform" : save.seenPhase ? "Press Down to fall through a platform (buy in shop)" : "???");
-    h += "<div style='font-weight:800;color:#ff7a7a;margin:8px 0 2px'>ENEMIES</div>";
-    h += row("🟢 Green goblin", "Patrols platforms; chases, jumps and drops to follow you on sight.", "#7ed957");
-    h += save.enemies.shooter
-      ? row("🔴 Red cyclops", "Stops and fires aimed shots the instant it sees you — faster every level.", "#ff7a7a")
-      : row("🔴 ???", "??? (first appears on level 2)", "#888");
-    h += save.enemies.ghost
-      ? row("🔵 Blue ghost", "Phases through walls and sees through them; slow, but relentless.", "#7fb0ff")
-      : row("🔵 ???", "??? (first appears on level 3)", "#888");
-    infoContent.innerHTML = h;
+    infoContent.innerHTML = ""; infoIcons = [];
+    const section = (t) => { const d = document.createElement("div"); d.className = "ic-section"; d.textContent = t; infoContent.appendChild(d); };
+    const card = () => { const c = document.createElement("div"); c.className = "icard"; infoContent.appendChild(c); return c; };
+    const locked = () => { const c = card(); c.classList.add("locked"); c.innerHTML = "<div class='ic-emoji'>❓</div><div class='ic-name'>???</div>"; };
+    const stat = (emoji, name, val) => { card().innerHTML = `<div class='ic-emoji'>${emoji}</div><div class='ic-name'>${name}</div><div class='ic-val'>${val}</div>`; };
+    const ability = (emoji, name, owned, ownDesc, seenDesc, seen) => {
+      if (owned || seen) card().innerHTML = `<div class='ic-emoji'>${emoji}</div><div class='ic-name'>${name}</div><div class='ic-desc'>${owned ? ownDesc : seenDesc}</div>`;
+      else locked();
+    };
+    const enemy = (type, unlocked, name, desc) => {
+      if (!unlocked) { locked(); return; }
+      const c = card();
+      const cv = document.createElement("canvas"); cv.width = 48; cv.height = 56; c.appendChild(cv);
+      c.insertAdjacentHTML("beforeend", `<div class='ic-name'>${name}</div><div class='ic-desc'>${desc}</div>`);
+      const ic = { ctx: cv.getContext("2d"), w: cv.width, h: cv.height, type, ph: Math.random()*6 };
+      infoIcons.push(ic); drawEnemyIcon(ic, 0);   // initial static draw
+    };
+
+    section("ABILITIES");
+    stat("🏃", "Speed", "Lv " + save.speed);
+    stat("🌀", "Bonk range", "Lv " + save.range);
+    stat("⚡", "Attack", "Lv " + save.atk);
+    stat("❤", "Hearts", "+" + save.hearts);
+    ability("🔫", "Weapon", save.gun, "Bonk fires a shot forward", "Fires a shot (in shop)", save.seenGun);
+    ability("⬇️", "Drop-through", save.phase, "Press Down to drop through", "Down to drop (in shop)", save.seenPhase);
+
+    section("ENEMIES");
+    enemy("patrol", true, "Green goblin", "Chases & jumps to follow you");
+    enemy("shooter", save.enemies.shooter, "Red cyclops", "Fires aimed shots on sight");
+    enemy("ghost", save.enemies.ghost, "Blue ghost", "Phases walls; slow but relentless");
+  }
+  let infoClock = 0;
+  function drawEnemyIcon(it, t) {
+    const c = it.ctx; c.clearRect(0, 0, it.w, it.h);
+    const fe = { w:32, h:44, dir:1, ph: t + it.ph, type: it.type, aiming:false, vx:1 };
+    const prev = ctx; ctx = c;
+    if (it.type === "ghost") c.globalAlpha = 0.85;
+    enemyBody(it.w/2, 8, fe, Math.sin(t + it.ph)*2);
+    c.globalAlpha = 1; ctx = prev;
+  }
+  function animateInfoIcons(dt) {
+    if (infoScreen.classList.contains("hidden") || !infoIcons.length) return;
+    infoClock += dt;
+    for (const it of infoIcons) drawEnemyIcon(it, infoClock*5);
   }
   document.getElementById("infoBtn").addEventListener("click", ()=>{ startScreen.classList.add("hidden"); renderInfo(); infoScreen.classList.remove("hidden"); });
   document.getElementById("infoClose").addEventListener("click", ()=>{ infoScreen.classList.add("hidden"); startScreen.classList.remove("hidden"); });
