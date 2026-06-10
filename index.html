@@ -330,7 +330,7 @@
 
   function mkEnemy(floorTopY, lo, hi, lvl, type) {
     const ew=32, eh=44, ex = lo + Math.random()*Math.max(2, hi-lo-ew);   // taller, with legs
-    return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:44+lvl*9, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6, type: type||"patrol", shootCd: 0.6+Math.random()*0.6, aiming:false };
+    return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:44+lvl*9, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6, type: type||"patrol", shootCd: 0.6+Math.random()*0.6, aiming:false, awake:false };
   }
 
   // Solvable iff every floor's gap is reachable: a floor's gap must not sit entirely above the
@@ -479,15 +479,18 @@
     for (let i = enemies.length-1; i >= 0; i--) {
       const e = enemies[i];
       if (!e.alive) { e.dying += dt; if (e.dying >= 0.4) enemies.splice(i,1); continue; }
-      if (e.type === "ghost") {   // blue: flies straight at the player through walls/floors, slowly
+      if (e.type === "ghost") {   // blue: wakes when you come near, then flies through everything
         e.ph += dt*6;
         const gcx = e.x+e.w/2, gcy = e.y+e.h/2;
         const dx = pcx-gcx, dy = pcy-gcy, gd = Math.hypot(dx,dy) || 1;
-        const sp = e.base * 0.9;   // slow, but relentless and unobstructed
-        e.x = clamp(e.x + dx/gd*sp*dt, 2, W-2-e.w);
-        e.y = clamp(e.y + dy/gd*sp*dt, 0, levelHeight-e.h);
-        e.dir = dx < 0 ? -1 : 1;
-        if (bp && Math.hypot(gcx-bp.x, gcy-bp.y) < bonkR + e.w/2) { e.alive=false; e.dying=0; score+=150; splat(gcx,gcy,"#3a86ff"); sndKill(); flash={text:"+150",color:"#3a86ff",t:0,small:true}; continue; }
+        if (gd < 260) e.awake = true;            // starts following once you come near
+        if (e.awake) {
+          const sp = e.base * 0.9;   // slow, but relentless and unobstructed
+          e.x = clamp(e.x + dx/gd*sp*dt, 2, W-2-e.w);
+          e.y = clamp(e.y + dy/gd*sp*dt, 0, levelHeight-e.h);
+          e.dir = dx < 0 ? -1 : 1;
+        }
+        if (bp && Math.hypot(gcx-bp.x, gcy-bp.y) < bonkR + e.w/2 && !losBlocked(pcx, gcx, bp.y)) { e.alive=false; e.dying=0; score+=150; splat(gcx,gcy,"#3a86ff"); sndKill(); flash={text:"+150",color:"#3a86ff",t:0,small:true}; continue; }
         if (p.invuln <= 0 && p.x < e.x+e.w && p.x+p.w > e.x && p.y < e.y+e.h && p.y+p.h > e.y) hurt(gcx);
         continue;
       }
@@ -537,7 +540,7 @@
       if (e.y+e.h >= levelHeight) { e.y = levelHeight-e.h; e.vy = 0; e.grounded = true; }
       // bonk kill / touch damage
       const ecx = e.x+e.w/2, ecy = e.y+e.h/2;
-      if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < bonkR + e.w/2) {
+      if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < bonkR + e.w/2 && !losBlocked(pcx, ecx, bp.y)) {
         e.alive = false; e.dying = 0; score += 150; splat(ecx, ecy, "#7ed957"); sndKill();
         flash = { text: "+150", color:"#7ed957", t:0, small:true }; continue;
       }
@@ -848,8 +851,8 @@
       { name:"🌀  More bonk range", desc:"Wider, longer nose cone", apply:()=>{ save.range++; applyUpgrades(); persistSave(); } },
       { name:"⚡  Faster attacks", desc:"Bonk more quickly", apply:()=>{ save.atk++; applyUpgrades(); persistSave(); } },
     ];
-    if (level >= 2 && !save.gun) { opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ save.gun=true; applyUpgrades(); persistSave(); } }); if (!save.seenGun) { save.seenGun=true; persistSave(); } }
-    if (level >= 3 && !save.phase) { opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ save.phase=true; applyUpgrades(); persistSave(); } }); if (!save.seenPhase) { save.seenPhase=true; persistSave(); } }
+    if (save.enemies.shooter && !save.gun) { opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ save.gun=true; applyUpgrades(); persistSave(); } }); if (!save.seenGun) { save.seenGun=true; persistSave(); } }
+    if (save.enemies.ghost && !save.phase) { opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ save.phase=true; applyUpgrades(); persistSave(); } }); if (!save.seenPhase) { save.seenPhase=true; persistSave(); } }
     shopItems.innerHTML = "";
     for (const o of opts) {
       const b = document.createElement("button");
