@@ -246,6 +246,12 @@
     for (const w of walls){ const wx=w.x+w.w/2; if (wx>lo && wx<hi && y>=w.y-2 && y<=w.y+w.h+2) return true; }
     return false;
   }
+  function coneBlocked(ax, ay, bx, by){   // any solid (wall or platform) on the line blocks the bonk
+    for (let i=1; i<=9; i++){ const t=i/10, x=ax+(bx-ax)*t, y=ay+(by-ay)*t;
+      for (const s of solids){ if (x>s.x && x<s.x+s.w && y>s.y && y<s.y+s.h) return true; }
+    }
+    return false;
+  }
   const PLW = 32, PLH = 46;
 
   // Closed maze: solid full-width floors every ROW_H, each with ONE staggered gap to climb
@@ -490,7 +496,7 @@
           e.y = clamp(e.y + dy/gd*sp*dt, 0, levelHeight-e.h);
           e.dir = dx < 0 ? -1 : 1;
         }
-        if (bp && Math.hypot(gcx-bp.x, gcy-bp.y) < bonkR + e.w/2 && !losBlocked(pcx, gcx, bp.y)) { e.alive=false; e.dying=0; score+=150; splat(gcx,gcy,"#3a86ff"); sndKill(); flash={text:"+150",color:"#3a86ff",t:0,small:true}; continue; }
+        if (bp && Math.hypot(gcx-bp.x, gcy-bp.y) < bonkR + e.w/2 && !coneBlocked(pcx, bp.y, gcx, gcy)) { e.alive=false; e.dying=0; score+=150; splat(gcx,gcy,"#3a86ff"); sndKill(); flash={text:"+150",color:"#3a86ff",t:0,small:true}; continue; }
         if (p.invuln <= 0 && p.x < e.x+e.w && p.x+p.w > e.x && p.y < e.y+e.h && p.y+p.h > e.y) hurt(gcx);
         continue;
       }
@@ -540,7 +546,7 @@
       if (e.y+e.h >= levelHeight) { e.y = levelHeight-e.h; e.vy = 0; e.grounded = true; }
       // bonk kill / touch damage
       const ecx = e.x+e.w/2, ecy = e.y+e.h/2;
-      if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < bonkR + e.w/2 && !losBlocked(pcx, ecx, bp.y)) {
+      if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < bonkR + e.w/2 && !coneBlocked(pcx, bp.y, ecx, ecy)) {
         e.alive = false; e.dying = 0; score += 150; splat(ecx, ecy, "#7ed957"); sndKill();
         flash = { text: "+150", color:"#7ed957", t:0, small:true }; continue;
       }
