@@ -68,6 +68,7 @@
     </div>
     <div class="sub" id="ctrlHint"></div>
     <button class="btn" id="startBtn">PLAY</button>
+    <button class="btn ghost" id="infoBtn">Collection</button>
     <button class="btn ghost" id="settingsBtn">Controls</button>
     <button class="btn ghost" id="editBtn" style="display:none">Cut / outline editor</button>
     <div class="credit">made with the footage from that night</div>
@@ -96,6 +97,12 @@
     <div id="bindList"></div>
     <button class="btn ghost" id="resetBinds">Reset to defaults</button>
     <button class="btn" id="closeSettings">Done</button>
+  </div>
+
+  <div id="infoScreen" class="overlay hidden" style="overflow:auto; justify-content:flex-start; gap:10px; padding:22px 16px;">
+    <div class="title" style="font-size:40px">COLLECTION</div>
+    <div id="infoContent" style="display:flex; flex-direction:column; gap:8px; width:min(560px,94vw); text-align:left; font-size:15px"></div>
+    <button class="btn" id="infoClose">Back</button>
   </div>
 
   <div id="shopScreen" class="overlay hidden">
@@ -160,6 +167,7 @@
   try { const s = JSON.parse(localStorage.getItem("jaleKeys")||"null"); if (s) keymap = Object.assign({}, DEFAULTS, s); } catch(e){}
   const saveKeys = () => localStorage.setItem("jaleKeys", JSON.stringify(keymap));
   const pressed = new Set();
+  const GAME_CODES = new Set(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","Enter","ControlRight","ControlLeft","KeyA","KeyD","KeyW","KeyS","KeyJ"]);
   const touchAct = { left:false, right:false, jump:false, bonk:false };
   let rebinding = null;
   function actionDown(a) {
@@ -187,7 +195,8 @@
       if (!ed || ed.classList.contains("hidden")) { audio(); startGame(); e.preventDefault(); return; }
     }
     pressed.add(e.code);
-    if (["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Space","ControlRight"].includes(e.code)) e.preventDefault();
+    // stop the browser's find-as-you-type / scrolling for any control key
+    if (GAME_CODES.has(e.code) || Object.values(keymap).includes(e.code)) e.preventDefault();
   });
   window.addEventListener("keyup", (e) => pressed.delete(e.code));
 
@@ -280,9 +289,11 @@
       for (let k=0;k<eN;k++) {
         const s = segs[(Math.random()*segs.length)|0];
         const r = Math.random();
-        const shooterChance = lvl >= 2 ? Math.min(0.42, 0.10 + lvl*0.05) : 0;   // red: levels 2+
-        const ghostChance   = lvl >= 3 ? 0.20 : 0;                              // blue: levels 3+
+        const shooterChance = (lvl >= 2 || save.enemies.shooter) ? Math.min(0.42, 0.10 + lvl*0.05) : 0;   // red: lv2+ (or once unlocked)
+        const ghostChance   = (lvl >= 3 || save.enemies.ghost)   ? 0.20 : 0;                               // blue: lv3+ (or once unlocked)
         const type = r < ghostChance ? "ghost" : (r < ghostChance + shooterChance ? "shooter" : "patrol");
+        if (type === "shooter" && !save.enemies.shooter) { save.enemies.shooter = true; persistSave(); }
+        if (type === "ghost"   && !save.enemies.ghost)   { save.enemies.ghost = true; persistSave(); }
         enemies.push(mkEnemy(y, s[0], s[1], lvl, type));
       }
       // gem (required), placed on a segment but NOT inside a wall
@@ -324,9 +335,27 @@
     return true;
   }
 
+  // ---------- persistent save (upgrades + enemy unlocks carry between games) ----------
+  const SAVE_KEY = "jaleBonkSave";
+  function loadSave() {
+    let s = {}; try { s = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}"); } catch (e) {}
+    return {
+      speed: s.speed||0, range: s.range||0, atk: s.atk||0, hearts: s.hearts||0,
+      gun: !!s.gun, phase: !!s.phase, seenGun: !!s.seenGun, seenPhase: !!s.seenPhase,
+      enemies: { shooter: !!(s.enemies && s.enemies.shooter), ghost: !!(s.enemies && s.enemies.ghost) }
+    };
+  }
+  function persistSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {} }
+  let save = loadSave();
+  function applyUpgrades() {
+    moveSpeed = MOVE + save.speed*55;
+    bonkR = BONK_R + save.range*11;
+    bonkDur = Math.max(0.3, BONK_DUR * Math.pow(0.78, save.atk));
+    hasGun = save.gun; canPhaseDown = save.phase;
+  }
   function startGame() {
-    level = 1; score = 0; lives = 3; flash = null;
-    moveSpeed = MOVE; bonkR = BONK_R; hasGun = false; canPhaseDown = false; bonkDur = BONK_DUR;
+    level = 1; score = 0; lives = 3 + save.hearts; flash = null;
+    applyUpgrades();
     genLevel(level); state="playing"; hideOverlays();
   }
   function winLevel() { score += 1000; state = "shop"; openShop(); }
@@ -737,19 +766,43 @@
 
   // ---------- Screens / UI ----------
   const startScreen=document.getElementById("startScreen"), settingsScreen=document.getElementById("settingsScreen"), overScreen=document.getElementById("overScreen");
-  function hideOverlays(){ startScreen.classList.add("hidden"); settingsScreen.classList.add("hidden"); overScreen.classList.add("hidden"); document.getElementById("shopScreen").classList.add("hidden"); }
+  function hideOverlays(){ startScreen.classList.add("hidden"); settingsScreen.classList.add("hidden"); overScreen.classList.add("hidden"); document.getElementById("shopScreen").classList.add("hidden"); document.getElementById("infoScreen").classList.add("hidden"); }
+  // ---------- Collection (abilities + enemies; ??? until unlocked/seen) ----------
+  const infoScreen = document.getElementById("infoScreen"), infoContent = document.getElementById("infoContent");
+  function renderInfo() {
+    const row = (label, val, col) => `<div><b style="color:${col||'#cfe'}">${label}</b> — <span style="opacity:.85">${val}</span></div>`;
+    let h = "<div style='font-weight:800;color:#7ed957;margin-bottom:2px'>ABILITIES (kept between games)</div>";
+    h += row("🏃 Speed", "Lv " + save.speed + (save.speed?` (+${save.speed*55} move)`:""));
+    h += row("🌀 Bonk range", "Lv " + save.range);
+    h += row("⚡ Attack speed", "Lv " + save.atk);
+    h += row("❤ Bonus hearts", "+" + save.hearts + " (start with " + (3+save.hearts) + ")");
+    h += row("🔫 Projectile weapon", save.gun ? "OWNED — bonking also fires a forward shot" : save.seenGun ? "Bonking also fires a forward shot (buy in shop)" : "???");
+    h += row("⬇️ Drop-through", save.phase ? "OWNED — press Down to fall through a platform" : save.seenPhase ? "Press Down to fall through a platform (buy in shop)" : "???");
+    h += "<div style='font-weight:800;color:#ff7a7a;margin:8px 0 2px'>ENEMIES</div>";
+    h += row("🟢 Green goblin", "Patrols platforms; chases, jumps and drops to follow you on sight.", "#7ed957");
+    h += save.enemies.shooter
+      ? row("🔴 Red cyclops", "Stops and fires aimed shots the instant it sees you — faster every level.", "#ff7a7a")
+      : row("🔴 ???", "??? (first appears on level 2)", "#888");
+    h += save.enemies.ghost
+      ? row("🔵 Blue ghost", "Phases through walls and sees through them; slow, but relentless.", "#7fb0ff")
+      : row("🔵 ???", "??? (first appears on level 3)", "#888");
+    infoContent.innerHTML = h;
+  }
+  document.getElementById("infoBtn").addEventListener("click", ()=>{ startScreen.classList.add("hidden"); renderInfo(); infoScreen.classList.remove("hidden"); });
+  document.getElementById("infoClose").addEventListener("click", ()=>{ infoScreen.classList.add("hidden"); startScreen.classList.remove("hidden"); });
+  if (location.hash === "#info") setTimeout(()=>document.getElementById("infoBtn").click(), 200);
   // ---------- upgrade shop (free, choose one) ----------
   const shopScreen = document.getElementById("shopScreen"), shopItems = document.getElementById("shopItems");
   function openShop() {
     document.getElementById("shopLevel").textContent = level;
     const opts = [
-      { name:"❤  Extra heart", desc:"Gain one more heart", apply:()=>{ lives++; } },
-      { name:"🏃  More speed", desc:"Run noticeably faster", apply:()=>{ moveSpeed += 55; } },
-      { name:"🌀  More bonk range", desc:"Wider, longer nose cone", apply:()=>{ bonkR += 11; } },
-      { name:"⚡  Faster attacks", desc:"Bonk more quickly", apply:()=>{ bonkDur = Math.max(0.3, bonkDur*0.78); } },
+      { name:"❤  Extra heart", desc:"Gain one more heart (kept forever)", apply:()=>{ save.hearts++; lives++; persistSave(); } },
+      { name:"🏃  More speed", desc:"Run noticeably faster", apply:()=>{ save.speed++; applyUpgrades(); persistSave(); } },
+      { name:"🌀  More bonk range", desc:"Wider, longer nose cone", apply:()=>{ save.range++; applyUpgrades(); persistSave(); } },
+      { name:"⚡  Faster attacks", desc:"Bonk more quickly", apply:()=>{ save.atk++; applyUpgrades(); persistSave(); } },
     ];
-    if (level >= 2 && !hasGun) opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ hasGun = true; } });
-    if (level >= 3 && !canPhaseDown) opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ canPhaseDown = true; } });
+    if (level >= 2 && !save.gun) { opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ save.gun=true; applyUpgrades(); persistSave(); } }); if (!save.seenGun) { save.seenGun=true; persistSave(); } }
+    if (level >= 3 && !save.phase) { opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ save.phase=true; applyUpgrades(); persistSave(); } }); if (!save.seenPhase) { save.seenPhase=true; persistSave(); } }
     shopItems.innerHTML = "";
     for (const o of opts) {
       const b = document.createElement("button");
