@@ -352,7 +352,7 @@
   function loadSave() {
     let s = {}; try { s = JSON.parse(localStorage.getItem(SAVE_KEY) || "{}"); } catch (e) {}
     return {
-      speed: s.speed||0, range: s.range||0, atk: s.atk||0, hearts: s.hearts||0,
+      speed: s.speed||0, range: s.range||0, atk: s.atk||0,
       gun: !!s.gun, phase: !!s.phase, seenGun: !!s.seenGun, seenPhase: !!s.seenPhase,
       enemies: { shooter: !!(s.enemies && s.enemies.shooter), ghost: !!(s.enemies && s.enemies.ghost) }
     };
@@ -366,7 +366,7 @@
     hasGun = save.gun; canPhaseDown = save.phase;
   }
   function startGame() {
-    level = 1; score = 0; lives = 3 + save.hearts; flash = null;
+    level = 1; score = 0; lives = 3; flash = null;
     applyUpgrades();
     genLevel(level); state="playing"; hideOverlays();
   }
@@ -448,7 +448,8 @@
     const prevTop = p.y, prevBot = p.y + p.h;
     p.y += p.vy * dt;
     p.grounded = false;
-    if (p.dropTimer <= 0) for (const s of solids) {   // while dropping, phase through
+    for (const s of solids) {
+      if (p.dropTimer > 0 && !s.floor) continue;   // while dropping, only the bottom ground blocks
       if (!(p.x + p.w > s.x + 2 && p.x < s.x + s.w - 2)) continue;
       if (p.vy >= 0 && prevBot <= s.y && p.y + p.h >= s.y) {            // land on top
         p.y = s.y - p.h; p.vy = 0; p.grounded = true;
@@ -731,7 +732,7 @@
     ctx.fillStyle="#fff"; ctx.font="700 32px 'Trebuchet MS',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="top";
     ctx.shadowColor="rgba(0,0,0,.6)"; ctx.shadowBlur=6; ctx.fillText(String(score),22,16); ctx.shadowBlur=0;
     ctx.font="600 16px 'Trebuchet MS',sans-serif"; ctx.fillStyle="rgba(255,255,255,.7)"; ctx.fillText("LEVEL "+level,24,52);
-    ctx.textAlign="right"; ctx.font="22px sans-serif"; ctx.fillStyle="#fff"; ctx.fillText("❤ " + lives, W-20, 20);
+    ctx.textAlign="right"; ctx.font="24px sans-serif"; ctx.fillStyle="#fff"; let hs=""; for(let i=0;i<3;i++) hs += i<lives?"❤ ":"🖤 "; ctx.fillText(hs.trim(), W-20, 18);
     // climb progress bar (right edge)
     const prog = clamp(1 - (player.y - 120) / (levelHeight - 120), 0, 1);
     ctx.fillStyle="rgba(255,255,255,.12)"; roundRect(W-16, 70, 8, H-150, 4); ctx.fill();
@@ -816,7 +817,6 @@
     stat("🏃", "Speed", "Lv " + save.speed);
     stat("🌀", "Bonk range", "Lv " + save.range);
     stat("⚡", "Attack", "Lv " + save.atk);
-    stat("❤", "Hearts", "+" + save.hearts);
     ability("🔫", "Weapon", save.gun, "Bonk fires a shot forward", "Fires a shot (in shop)", save.seenGun);
     ability("⬇️", "Drop-through", save.phase, "Press Down to drop through", "Down to drop (in shop)", save.seenPhase);
 
@@ -847,11 +847,11 @@
   function openShop() {
     document.getElementById("shopLevel").textContent = level;
     const opts = [
-      { name:"❤  Extra heart", desc:"Gain one more heart (kept forever)", apply:()=>{ save.hearts++; lives++; persistSave(); } },
       { name:"🏃  More speed", desc:"Run noticeably faster", apply:()=>{ save.speed++; applyUpgrades(); persistSave(); } },
       { name:"🌀  More bonk range", desc:"Wider, longer nose cone", apply:()=>{ save.range++; applyUpgrades(); persistSave(); } },
       { name:"⚡  Faster attacks", desc:"Bonk more quickly", apply:()=>{ save.atk++; applyUpgrades(); persistSave(); } },
     ];
+    if (lives < 3) opts.unshift({ name:"❤  Restore a heart", desc:"Heal one heart (max 3)", apply:()=>{ lives = Math.min(3, lives+1); } });
     if (save.enemies.shooter && !save.gun) { opts.push({ name:"🔫  Projectile weapon", desc:"Bonking also fires a shot forward", apply:()=>{ save.gun=true; applyUpgrades(); persistSave(); } }); if (!save.seenGun) { save.seenGun=true; persistSave(); } }
     if (save.enemies.ghost && !save.phase) { opts.push({ name:"⬇️  Drop-through", desc:"Press Down to fall through a platform", apply:()=>{ save.phase=true; applyUpgrades(); persistSave(); } }); if (!save.seenPhase) { save.seenPhase=true; persistSave(); } }
     shopItems.innerHTML = "";
