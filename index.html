@@ -113,7 +113,10 @@
   <div id="infoScreen" class="overlay hidden" style="overflow:auto; justify-content:flex-start; gap:10px; padding:22px 16px;">
     <div class="title" style="font-size:40px">COLLECTION</div>
     <div id="infoContent" style="width:min(620px,94vw)"></div>
-    <button class="btn" id="infoClose">Back</button>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
+      <button class="btn" id="infoClose">Back</button>
+      <button class="btn ghost" id="infoReset" style="color:#ff8a8a; border-color:#ff8a8a">Reset progress</button>
+    </div>
   </div>
 
   <div id="shopScreen" class="overlay hidden">
@@ -123,7 +126,7 @@
   </div>
 
   <div id="overScreen" class="overlay hidden">
-    <div class="title" style="font-size:46px">GAME OVER</div>
+    <div class="title" id="overTitle" style="font-size:46px">GAME OVER</div>
     <div class="big-score" id="finalScore">0</div>
     <div class="sub" id="bestLine">Best: 0</div>
     <button class="btn" id="againBtn">PLAY AGAIN</button>
@@ -214,6 +217,7 @@
   // ---------- Game state ----------
   let state = "start";
   let player, platforms, enemies, particles, walls, gems, shots, solids, goalPlat, levelHeight, cam, level, score, lives, best;
+  let boss = null, bossLedges = [];
   let moveSpeed, bonkR, hasGun, canPhaseDown, bonkDur;   // upgrades chosen in the shop
   let gemsTotal = 0, gemsGot = 0;
   let jumpPrev = false, bonkPrev = false;
@@ -227,6 +231,7 @@
   const SHOT_SPEED = 250;                                  // red cyclops projectile speed
   const shootInterval = (lvl) => Math.max(0.4, 1.25 - lvl*0.12);   // fires faster each level
   const PIXEL = 3;                  // pixel-art downscale factor for the world (not the video)
+  const BOSS_LEVEL = 4;             // level 4 is the final boss arena instead of a maze
 
   // low-res buffer for the pixel-art world (the video is drawn smooth, separately)
   const lbuf = document.createElement("canvas"); lbuf.width = Math.ceil(W/PIXEL); lbuf.height = Math.ceil(H/PIXEL);
@@ -248,6 +253,8 @@
     return false;
   }
   const PLW = 32, PLH = 46;
+  const KILL_PTS = { patrol:150, shooter:250, ghost:300 };   // red/blue are worth more
+  const killPts = (t) => KILL_PTS[t] || 150;
 
   // Closed maze: solid full-width floors every ROW_H, each with ONE staggered gap to climb
   // through; thick jumpable dirt walls partition the corridors. Verified solvable (the gap
@@ -272,6 +279,7 @@
       if (solvableMaze(gaps, rows)) break;
     }
 
+    boss = null;
     platforms = []; enemies = []; particles = []; walls = []; gems = []; shots = [];
     platforms.push({ x:0, y:levelHeight-30, w:W, h:30, floor:true });   // ground
     const gemRows = shuffle(rangeArr(1, rows-1)).slice(0, Math.min(rows-1, 3 + Math.floor(lvl*0.7)));
@@ -334,6 +342,98 @@
     return { x:ex, y:floorTopY-eh, w:ew, h:eh, base:44+lvl*9, dir:(Math.random()<.5?-1:1), vx:0, vy:0, grounded:false, jumpCd:Math.random()*2, alive:true, dying:0, ph:Math.random()*6, type: type||"patrol", shootCd: 0.6+Math.random()*0.6, aiming:false, awake:false };
   }
 
+  // ---------- Final boss arena (level 4): a floating one-eyed tentacled kraken ----------
+  function genBoss() {
+    boss = null;
+    levelHeight = H + 240;                                   // 840: a touch taller than the screen
+    const gy = levelHeight - 30;                             // ground top
+    platforms = []; enemies = []; particles = []; walls = []; gems = []; shots = [];
+    platforms.push({ x:0, y:gy, w:W, h:30, floor:true });    // ground
+    // ledges to climb and dodge around the boss
+    const ledges = [
+      { x:40,      y:gy-165, w:220, h:FH },   // low left
+      { x:W-260,   y:gy-165, w:220, h:FH },   // low right
+      { x:150,     y:gy-320, w:190, h:FH },   // mid left
+      { x:W-340,   y:gy-320, w:190, h:FH },   // mid right
+      { x:W/2-100, y:gy-330, w:200, h:FH },   // center perch (reach the eye)
+    ];
+    for (const pl of ledges) platforms.push(pl);
+    bossLedges = ledges.slice(0, 4);                         // minions spawn on the side ledges
+    goalPlat = null; gemsTotal = 0; gemsGot = 0;
+    solids = platforms.concat(walls);
+    player = { x: W/2-PLW/2, y: gy-PLH, w:PLW, h:PLH, vx:0, vy:0, facing:1,
+               grounded:false, bonkT:-1, bonkCd:0, invuln:0, walkPh:0, dropTimer:0 };
+    const cy = 320;                                          // eye floats here, centered
+    boss = { cx:W/2, baseY:cy, cy:cy, w:152, h:122, eyeR:24, hp:16, maxHp:16,
+             mode:"idle", cd:1.6, seq:0, atkT:0, t:0, bobT:0, tentPhase:0,
+             hitFlash:0, invuln:0, laser:null, spawned:false, beamLen:1200, tentReach:172 };
+    cam = { y: levelHeight - H };
+  }
+  function bossHit(n) {
+    if (!boss) return;
+    boss.hp -= n; boss.invuln = 0.35; boss.hitFlash = 0.25;
+    splat(boss.cx, boss.cy, "#ff8a8a"); sndKill();
+    flash = { text:"HIT  "+Math.max(0,boss.hp)+"/"+boss.maxHp, color:"#ff8a8a", t:0, small:true };
+    if (boss.hp <= 0) victory();
+  }
+  function spawnBossMinion(type) {
+    if (enemies.filter(e=>e.alive).length >= 5 || !bossLedges.length) return;
+    const pl = bossLedges[(Math.random()*bossLedges.length)|0];
+    const e = mkEnemy(pl.y, pl.x+6, pl.x+pl.w-6, BOSS_LEVEL, type);
+    enemies.push(e); splat(e.x+e.w/2, e.y+e.h/2, "#ffcaca");
+  }
+  function startBossAttack() {
+    const kinds = ["laser","tent","spawn"];
+    boss.mode = kinds[boss.seq % kinds.length]; boss.seq++;
+    boss.atkT = 0; boss.spawned = false;
+    if (boss.mode === "laser") boss.laser = { phase:"charge", t:0,
+      ang: Math.atan2((player.y+player.h/2)-boss.cy, (player.x+player.w/2)-boss.cx) };
+  }
+  function endBossAttack() { boss.mode = "idle"; boss.laser = null; boss.cd = Math.max(0.5, 1.3 - boss.seq*0.04); }
+  function updateBoss(dt, p, pcx, pcy, bp) {
+    const b = boss;
+    b.t += dt; b.bobT += dt; b.tentPhase += dt*2;
+    b.cy = b.baseY + Math.sin(b.bobT*1.3)*16;                // float/bob in place
+    if (b.hitFlash > 0) b.hitFlash -= dt;
+    if (b.invuln > 0)  b.invuln  -= dt;
+    const ex = b.cx, ey = b.cy;
+    // bonk the eye to damage it
+    if (bp && b.invuln <= 0 && Math.hypot(bp.x-ex, bp.y-ey) < bonkR + b.eyeR && !coneBlocked(bp.x, bp.y, ex, ey)) bossHit(1);
+    if (!boss) return;
+    // body contact hurts
+    if (p.invuln <= 0 && p.x < b.cx+b.w/2 && p.x+p.w > b.cx-b.w/2 && p.y < b.cy+b.h/2 && p.y+p.h > b.cy-b.h/2) hurt(b.cx);
+    // attack scheduler
+    if (b.mode === "idle") {
+      b.cd -= dt; if (b.cd <= 0) startBossAttack();
+    } else if (b.mode === "laser") {
+      const L = b.laser; L.t += dt;
+      if (L.phase === "charge") {
+        const want = Math.atan2(pcy-ey, pcx-ex);             // track the player while charging
+        L.ang += Math.atan2(Math.sin(want-L.ang), Math.cos(want-L.ang)) * Math.min(1, dt*4);
+        if (L.t >= 0.9) { L.phase = "fire"; L.t = 0; sndShoot(); blip(90,0.4,"sawtooth",0.16); }
+      } else {                                               // fire: aimed beam locked at the charged angle
+        const dx = Math.cos(L.ang), dy = Math.sin(L.ang);
+        const tp = clamp((pcx-ex)*dx + (pcy-ey)*dy, 0, b.beamLen);
+        if (p.invuln <= 0 && tp > 6 && Math.hypot(pcx-(ex+dx*tp), pcy-(ey+dy*tp)) < 13 + p.w/2) hurt(ex);
+        if (L.t >= 0.55) endBossAttack();
+      }
+    } else if (b.mode === "tent") {
+      b.atkT += dt;
+      if (b.atkT > 0.55 && b.atkT < 1.45) {                  // tentacles sweep a ring around the boss
+        const d = Math.hypot(pcx-ex, pcy-ey);
+        if (p.invuln <= 0 && d > 58 && d < b.tentReach) hurt(ex);
+      }
+      if (b.atkT >= 1.55) endBossAttack();
+    } else if (b.mode === "spawn") {
+      b.atkT += dt;
+      if (!b.spawned && b.atkT > 0.5) { b.spawned = true;
+        const n = 2 + (b.seq % 2);
+        for (let i=0;i<n;i++) spawnBossMinion((save.enemies.shooter && Math.random()<0.5) ? "shooter" : "patrol");
+      }
+      if (b.atkT >= 1.0) endBossAttack();
+    }
+  }
+
   // Solvable iff every floor's gap is reachable: a floor's gap must not sit entirely above the
   // floor below's gap (otherwise there's nowhere solid to stand to jump up). Floors are
   // full-width-minus-one-gap and walls are jumpable, so each floor is fully traversable.
@@ -371,10 +471,25 @@
     genLevel(level); state="playing"; hideOverlays();
   }
   function winLevel() { score += 1000; state = "shop"; openShop(); }
-  function continueLevel() { level++; flash = { text:"LEVEL "+level, color:"#7ed957", t:0 }; genLevel(level); state = "playing"; document.getElementById("shopScreen").classList.add("hidden"); }
+  function continueLevel() {
+    level++;
+    document.getElementById("shopScreen").classList.add("hidden");
+    if (level === BOSS_LEVEL) { flash = { text:"FINAL BOSS", color:"#ff4d4d", t:0 }; genBoss(); }
+    else { flash = { text:"LEVEL "+level, color:"#7ed957", t:0 }; genLevel(level); }
+    state = "playing";
+  }
+  function victory() {
+    boss = null; score += 3000;
+    if (score > best) { best = score; localStorage.setItem("jaleClimbBest", String(best)); }
+    document.getElementById("overTitle").textContent = "YOU WIN!";
+    document.getElementById("finalScore").textContent = score;
+    document.getElementById("bestLine").textContent = "You beat JALE BONK!   ·   Best: " + best;
+    state = "over"; sndWin(); overScreen.classList.remove("hidden");
+  }
   function gameOver() {
     state = "over";
     if (score > best) { best = score; localStorage.setItem("jaleClimbBest", String(best)); }
+    document.getElementById("overTitle").textContent = "GAME OVER";
     document.getElementById("finalScore").textContent = score;
     document.getElementById("bestLine").textContent = "Best: " + best + "   ·   reached level " + level;
     document.getElementById("overScreen").classList.remove("hidden");
@@ -468,7 +583,7 @@
     }
     if (Math.abs(p.vx) > 5 && p.grounded) p.walkPh += dt * 12;
     // reach the exit portal by TOUCHING it from any side (needs all gems)
-    { const gp = goalPlat, m = 16;
+    if (!boss && goalPlat) { const gp = goalPlat, m = 16;
       if (p.x+p.w > gp.x-m && p.x < gp.x+gp.w+m && p.y+p.h > gp.y-48 && p.y < gp.y+gp.h+m) {
         if (gemsGot >= gemsTotal) { sndWin(); winLevel(); return; }
         else flash = { text:"COLLECT ALL GEMS", color:"#ffd23f", t:0, small:true };
@@ -492,7 +607,7 @@
           e.y = clamp(e.y + dy/gd*sp*dt, 0, levelHeight-e.h);
           e.dir = dx < 0 ? -1 : 1;
         }
-        if (bp && Math.hypot(gcx-bp.x, gcy-bp.y) < bonkR + e.w/2 && !coneBlocked(pcx, bp.y, gcx, gcy)) { e.alive=false; e.dying=0; score+=150; splat(gcx,gcy,"#3a86ff"); sndKill(); flash={text:"+150",color:"#3a86ff",t:0,small:true}; continue; }
+        if (bp && Math.hypot(gcx-bp.x, gcy-bp.y) < bonkR + e.w/2 && !coneBlocked(pcx, bp.y, gcx, gcy)) { e.alive=false; e.dying=0; const pts=killPts(e.type); score+=pts; splat(gcx,gcy,"#3a86ff"); sndKill(); flash={text:"+"+pts,color:"#3a86ff",t:0,small:true}; continue; }
         if (p.invuln <= 0 && p.x < e.x+e.w && p.x+p.w > e.x && p.y < e.y+e.h && p.y+p.h > e.y) hurt(gcx);
         continue;
       }
@@ -543,11 +658,12 @@
       // bonk kill / touch damage
       const ecx = e.x+e.w/2, ecy = e.y+e.h/2;
       if (bp && Math.hypot(ecx-bp.x, ecy-bp.y) < bonkR + e.w/2 && !coneBlocked(pcx, bp.y, ecx, ecy)) {
-        e.alive = false; e.dying = 0; score += 150; splat(ecx, ecy, "#7ed957"); sndKill();
-        flash = { text: "+150", color:"#7ed957", t:0, small:true }; continue;
+        e.alive = false; e.dying = 0; const pts = killPts(e.type); score += pts; splat(ecx, ecy, e.type==="shooter"?"#c0392b":"#7ed957"); sndKill();
+        flash = { text: "+"+pts, color: e.type==="shooter"?"#ff6a5a":"#7ed957", t:0, small:true }; continue;
       }
       if (p.invuln <= 0 && p.x < e.x+e.w && p.x+p.w > e.x && p.y < e.y+e.h && p.y+p.h > e.y) hurt(ecx);
     }
+    if (boss) updateBoss(dt, p, pcx, pcy, bp);
     // projectiles: fly straight, blocked by walls/floors. Enemy shots hurt you; your shots kill enemies.
     for (let i=shots.length-1;i>=0;i--){
       const s = shots[i]; s.x += s.vx * dt; s.y += (s.vy || 0) * dt;
@@ -557,11 +673,14 @@
       for (const so of solids) { if (s.x > so.x && s.x < so.x+so.w && s.y > so.y && s.y < so.y+so.h) { blocked = true; break; } }
       if (blocked) { splat(s.x, s.y, col); shots.splice(i,1); continue; }
       if (s.friendly) {
+        if (boss && boss.invuln <= 0 && s.x > boss.cx-boss.w/2 && s.x < boss.cx+boss.w/2 && s.y > boss.cy-boss.h/2 && s.y < boss.cy+boss.h/2) {
+          bossHit(1); splat(s.x, s.y, "#9fe8ff"); shots.splice(i,1); continue;
+        }
         let hit = false;
         for (const e of enemies) {
           if (e.alive && s.x > e.x && s.x < e.x+e.w && s.y > e.y && s.y < e.y+e.h) {
-            e.alive = false; e.dying = 0; score += 150; splat(e.x+e.w/2, e.y+e.h/2, "#9fe8ff"); sndKill();
-            flash = { text:"+150", color:"#9fe8ff", t:0, small:true }; hit = true; break;
+            e.alive = false; e.dying = 0; const pts = killPts(e.type); score += pts; splat(e.x+e.w/2, e.y+e.h/2, "#9fe8ff"); sndKill();
+            flash = { text:"+"+pts, color:"#9fe8ff", t:0, small:true }; hit = true; break;
           }
         }
         if (hit) { shots.splice(i,1); }
@@ -728,15 +847,80 @@
     realCtx.restore();
   }
 
+  function drawBoss() {   // floating one-eyed tentacled kraken (pixel-art buffer)
+    const b = boss, cx = b.cx, cy = b.cy - cam.y;
+    const px = player.x+player.w/2, py = player.y+player.h/2;
+    const charging = b.mode==="laser" && b.laser && b.laser.phase==="charge";
+    const firing   = b.mode==="laser" && b.laser && b.laser.phase==="fire";
+    // tentacle extension: 0..1..0 across a tentacle sweep
+    let tentEx = 0.15 + 0.1*Math.sin(b.tentPhase);
+    if (b.mode==="tent") tentEx = 0.2 + 0.95*Math.sin(clamp((b.atkT-0.2)/1.2,0,1)*Math.PI);
+    const baseY = cy + b.h*0.26, nT = 7;
+    ctx.fillStyle = b.hitFlash>0 ? "#e98a86" : "#9b1c1c";
+    for (let i=0;i<nT;i++) {
+      const spread = (i/(nT-1)-0.5)*2;                       // -1..1
+      const len = 50 + tentEx*95 + (i%2)*8, segs = 8;
+      for (let j=1;j<=segs;j++) {
+        const tt = j/segs, along = len*tt;
+        const x = cx + spread*b.w*0.30 + Math.sin(along*0.06 + spread) * along*0.18
+                  + Math.sin(b.tentPhase*2 + i*1.3 + tt*5) * (10*tt) * (0.5+tentEx);
+        const y = baseY + along;
+        const r = 9*(1-tt) + 2.5;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    // body
+    ctx.fillStyle = b.hitFlash>0 ? "#ffd0d0" : "#c0231f";
+    ctx.strokeStyle = "#7a1410"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(cx, cy, b.w/2, b.h/2, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(0,0,0,.18)";
+    ctx.beginPath(); ctx.ellipse(cx-26, cy-18, 9, 6, 0, 0, Math.PI*2); ctx.ellipse(cx+30, cy-6, 7, 5, 0, 0, Math.PI*2); ctx.fill();
+    // charge telegraph line
+    const ex = cx, ey = cy-4, ang = (charging||firing) ? b.laser.ang : Math.atan2(py-b.cy, px-b.cx);
+    if (charging) { ctx.save(); ctx.translate(ex,ey); ctx.rotate(b.laser.ang);
+      ctx.globalAlpha = 0.25 + 0.2*Math.sin(b.laser.t*30); ctx.fillStyle="#ff3b3b"; ctx.fillRect(0,-1.5,b.beamLen,3); ctx.restore(); }
+    if (firing) { const L=b.laser; ctx.save(); ctx.translate(ex,ey); ctx.rotate(L.ang);
+      const fade = 1-L.t/0.55, hw = 11 + Math.sin(L.t*40)*2; ctx.globalAlpha = 0.92*fade;
+      const g = ctx.createLinearGradient(0,0,b.beamLen,0);
+      g.addColorStop(0,"#fff"); g.addColorStop(0.12,"#ff5a5a"); g.addColorStop(1,"rgba(255,40,40,0.08)");
+      ctx.fillStyle = g; ctx.fillRect(0,-hw,b.beamLen,hw*2);
+      ctx.fillStyle="#fff"; ctx.fillRect(0,-3,b.beamLen,6); ctx.restore(); }
+    // eye
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, b.eyeR, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#7a1410"; ctx.lineWidth = 2; ctx.stroke();
+    const irx = ex + Math.cos(ang)*b.eyeR*0.4, iry = ey + Math.sin(ang)*b.eyeR*0.4;
+    if (charging) { ctx.save(); ctx.shadowColor="#ff3b3b"; ctx.shadowBlur=14; ctx.fillStyle="#ff3b3b"; }
+    else ctx.fillStyle = "#7a1410";
+    ctx.beginPath(); ctx.arc(irx, iry, b.eyeR*0.52, 0, Math.PI*2); ctx.fill();
+    if (charging) ctx.restore();
+    ctx.fillStyle = "#111"; ctx.beginPath(); ctx.arc(irx, iry, b.eyeR*0.26, 0, Math.PI*2); ctx.fill();
+  }
+  const HEART_PX = [".XX.XX.","XXXXXXX","XXXXXXX",".XXXXX.","..XXX..","...X..."];
+  function drawHeart(ox, oy, bs, col) {   // flat pixel-art heart (no shading)
+    ctx.fillStyle = col;
+    for (let r=0;r<HEART_PX.length;r++){ const row=HEART_PX[r];
+      for (let c=0;c<row.length;c++) if (row[c]==="X") ctx.fillRect(ox+c*bs, oy+r*bs, bs, bs); }
+  }
   function drawHUD() {
     ctx.fillStyle="#fff"; ctx.font="700 32px 'Trebuchet MS',sans-serif"; ctx.textAlign="left"; ctx.textBaseline="top";
     ctx.shadowColor="rgba(0,0,0,.6)"; ctx.shadowBlur=6; ctx.fillText(String(score),22,16); ctx.shadowBlur=0;
     ctx.font="600 16px 'Trebuchet MS',sans-serif"; ctx.fillStyle="rgba(255,255,255,.7)"; ctx.fillText("LEVEL "+level,24,52);
-    ctx.textAlign="right"; ctx.font="24px sans-serif"; ctx.fillStyle="#fff"; let hs=""; for(let i=0;i<3;i++) hs += i<lives?"❤ ":"🖤 "; ctx.fillText(hs.trim(), W-20, 18);
-    // climb progress bar (right edge)
-    const prog = clamp(1 - (player.y - 120) / (levelHeight - 120), 0, 1);
-    ctx.fillStyle="rgba(255,255,255,.12)"; roundRect(W-16, 70, 8, H-150, 4); ctx.fill();
-    ctx.fillStyle="#7ed957"; const bh=(H-150); roundRect(W-16, 70+bh*(1-prog), 8, bh*prog, 4); ctx.fill();
+    { const bs=4, hw=7*bs, gap=7, total=3*hw+2*gap, sx=W-20-total, sy=16; ctx.imageSmoothingEnabled=false;
+      for(let i=0;i<3;i++) drawHeart(sx+i*(hw+gap), sy, bs, i<lives ? "#ff3b3b" : "#000"); }
+    if (boss) {
+      // boss health bar (top center)
+      const bw=380, bx=(W-bw)/2, by=22;
+      ctx.fillStyle="rgba(0,0,0,.45)"; roundRect(bx-4, by-4, bw+8, 20, 9); ctx.fill();
+      ctx.fillStyle="rgba(255,255,255,.15)"; roundRect(bx, by, bw, 12, 6); ctx.fill();
+      ctx.fillStyle="#ff4d4d"; const f=Math.max(0,boss.hp)/boss.maxHp; if(f>0){ roundRect(bx, by, bw*f, 12, 6); ctx.fill(); }
+      ctx.fillStyle="#fff"; ctx.font="800 12px 'Trebuchet MS',sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("THE KRAKEN", W/2, by+6); ctx.textBaseline="top";
+    } else {
+      // climb progress bar (right edge)
+      const prog = clamp(1 - (player.y - 120) / (levelHeight - 120), 0, 1);
+      ctx.fillStyle="rgba(255,255,255,.12)"; roundRect(W-16, 70, 8, H-150, 4); ctx.fill();
+      ctx.fillStyle="#7ed957"; const bh=(H-150); roundRect(W-16, 70+bh*(1-prog), 8, bh*prog, 4); ctx.fill();
+    }
     if (flash) { const a=flash.t<0.8?1:1-(flash.t-0.8)/0.3; ctx.save(); ctx.globalAlpha=Math.max(0,a); ctx.textAlign="center"; ctx.fillStyle=flash.color; ctx.shadowColor=flash.color; ctx.shadowBlur=20; ctx.font=(flash.small?"800 30px":"800 56px")+" 'Trebuchet MS',sans-serif"; ctx.fillText(flash.text, W/2, flash.small? 120 : H*0.32); ctx.restore(); }
   }
 
@@ -767,6 +951,7 @@
       for (const pl of platforms) drawPlatform(pl);
       for (const wl of walls) drawWall(wl);
       for (const gm of gems) drawGem(gm);
+      if (boss) drawBoss();
       for (const e of enemies) drawEnemy(e);
       for (const s of shots) drawShot(s);
       for (const q of particles){ ctx.globalAlpha=Math.max(0,q.life*1.6); ctx.fillStyle=q.color; ctx.fillRect(q.x-q.r, q.y-cam.y-q.r, q.r*2, q.r*2); }
@@ -798,6 +983,7 @@
     infoContent.innerHTML = ""; infoIcons = [];
     const section = (t) => { const d = document.createElement("div"); d.className = "ic-section"; d.textContent = t; infoContent.appendChild(d); };
     const card = () => { const c = document.createElement("div"); c.className = "icard"; infoContent.appendChild(c); return c; };
+    const rowbreak = () => { const d = document.createElement("div"); d.style.cssText = "width:100%;height:0"; infoContent.appendChild(d); };
     const locked = () => { const c = card(); c.classList.add("locked"); c.innerHTML = "<div class='ic-emoji'>❓</div><div class='ic-name'>???</div>"; };
     const stat = (emoji, name, val) => { card().innerHTML = `<div class='ic-emoji'>${emoji}</div><div class='ic-name'>${name}</div><div class='ic-val'>${val}</div>`; };
     const ability = (emoji, name, owned, ownDesc, seenDesc, seen) => {
@@ -817,6 +1003,7 @@
     stat("🏃", "Speed", "Lv " + save.speed);
     stat("🌀", "Bonk range", "Lv " + save.range);
     stat("⚡", "Attack", "Lv " + save.atk);
+    rowbreak();
     ability("🔫", "Weapon", save.gun, "Bonk fires a shot forward", "Fires a shot (in shop)", save.seenGun);
     ability("⬇️", "Drop-through", save.phase, "Press Down to drop through", "Down to drop (in shop)", save.seenPhase);
 
@@ -841,6 +1028,11 @@
   }
   document.getElementById("infoBtn").addEventListener("click", ()=>{ startScreen.classList.add("hidden"); renderInfo(); infoScreen.classList.remove("hidden"); });
   document.getElementById("infoClose").addEventListener("click", ()=>{ infoScreen.classList.add("hidden"); startScreen.classList.remove("hidden"); });
+  document.getElementById("infoReset").addEventListener("click", ()=>{
+    if (!confirm("Reset all progress? Upgrades and unlocked enemies/abilities will be wiped.")) return;
+    try { localStorage.removeItem(SAVE_KEY); } catch(e) {}
+    save = loadSave(); applyUpgrades(); renderInfo();
+  });
   if (location.hash === "#info") setTimeout(()=>document.getElementById("infoBtn").click(), 200);
   // ---------- upgrade shop (free, choose one) ----------
   const shopScreen = document.getElementById("shopScreen"), shopItems = document.getElementById("shopItems");
@@ -953,6 +1145,10 @@
     else if (location.hash==="#test-shoot") { const fy=levelHeight-30; const e=mkEnemy(fy, W/2+120, W-40, level, "shooter"); e.x=W/2+170; e.dir=-1; e.aiming=true; enemies.push(e); shots.push({x:W/2+110, y:player.y+player.h/2, vx:-SHOT_SPEED, r:7}); window.__FREEZE=true; }
     else if (location.hash==="#test-shop") { level=3; winLevel(); }
     else if (location.hash==="#test-ghost") { const fy=levelHeight-30; const g=mkEnemy(fy,40,W-40,level,"ghost"); g.x=120; enemies=[g]; player.x=W-160; player.y=fy-player.h; }
+    else if (location.hash.startsWith("#test-boss")) { level=BOSS_LEVEL; genBoss(); state="playing";
+      if (location.hash==="#test-boss-laser") { boss.mode="laser"; boss.laser={phase:"fire",t:0.2,ang:Math.atan2((player.y)-boss.cy,(player.x)-boss.cx)}; }
+      else if (location.hash==="#test-boss-tent") { boss.mode="tent"; boss.atkT=0.8; }
+      window.__FREEZE = true; }
     if (location.hash==="#test-touch") touchEl.classList.remove("hidden");
   }, 700);
 })();
